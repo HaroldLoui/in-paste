@@ -1,6 +1,6 @@
 # in-paste 开发计划（v1）
 
-> 状态：草案，待评审  
+> 状态：已评审（2026-11-09），M0 技术验证通过；评审记录见 [`REVIEW.md`](REVIEW.md)  
 > 基线需求：[`ui.md`](../ui.md)、设计稿 [`ui.png`](../ui.png)  
 > 本期目标：**只做 UI 原型**（mock 数据），不做真实剪贴板监听、持久化、全局热键、托盘。
 
@@ -30,11 +30,11 @@
 
 ## 3. 技术栈与 M0 决策门
 
-- GUI：**egui / eframe 0.37**，glow 后端。
+- GUI：**egui / eframe 0.37**，glow 后端。0.37 的 App trait 是 Ui-first：`fn ui(&mut self, ui: &mut egui::Ui, frame: &mut Frame)`，旧 `update(ctx, frame)` 已不存在。
 - 预览浮层：eframe **第二个 viewport**（无边框 + 透明 + 自绘）。
 - 图标：**手绘矢量**（`painter` 绘制），不引入图标字体，保证任意 DPI 清晰。
-- 字体：系统字体。egui 默认不含 CJK，必须运行时加载 `C:\Windows\Fonts\msyh.ttc`（回退 `msyh.ttf` / `simhei.ttf`），并配 Segoe UI 作为拉丁字形回退。
-- 复制：egui 自带 `ctx.copy_text`（原型阶段不引入剪贴板 crate）。
+- 字体：系统字体。egui 默认不含 CJK，必须运行时加载 `C:\Windows\Fonts\msyh.ttc`（回退 `msyh.ttf` / `simhei.ttf`），并配 Segoe UI 作为拉丁字形回退。`default_fonts` 关闭后 `FontDefinitions` 为空，必须 `ctx.set_fonts()`。
+- 复制：egui 自带 `ctx.copy_text`；eframe features 必须含 `clipboard`，否则 egui-winit 只写进程内 fallback，系统剪贴板不更新。
 - 图片：`image` crate 解码后 `ctx.load_texture`。
 
 **M0 是唯一翻盘口**：三个风险点任一不通过，则转 Windows Reactor 方案（M1–M5 的组件与状态划分不变，仅替换渲染层）。
@@ -47,22 +47,23 @@
 
 | Token | 值 |
 |---|---|
-| `window.bg` | `#F4F5FD`（落地为不透明近白微紫） |
+| `window.bg` | `#F3F2FD`（落地为不透明近白微紫） |
 | `window.size` | 780 × 520 |
 | `window.radius` | 20 |
 | `window.shadow` | `0 12px 40px rgba(30, 42, 70, 0.14)` |
 | `toolbar.height` | ~78 |
-| `accent` | `#1C6FFB` |
+| `accent` | `#1468FD` |
 | `text.primary` | `#1F2A44` |
 | `text.secondary` | `#8A91A6` |
 | `search.bg / height / radius` | `#E7E7F5` / 44 / 22 |
-| `tab.indicator` | 32 × 3，`#1C6FFB` |
-| `row.height / radius / selected` | 88 / 12 / `#CCDDFD` |
+| `tab.indicator` | 32 × 3，`#1468FD` |
+| `list.top` | 87（工具栏 78 + 9） |
+| `row.height / radius / selected` | 88 / 12 / `#C6D9FE`（行距 89） |
 | `icon.tile` | 56 × 56（首版），r16；文本块 `#D9E1F8`，文件块近白 |
-| `shortcut.pill` | `#E9EBF7`，r10，15px |
-| `preview.width / radius / bg / gap` | 430 / 16 / `#F8F8FD` / 20 |
-| `preview.arrow` | ~20px 三角，尖端对齐选中行垂直中心 |
-| `button.primary` | h50，r14，`#1C6FFB`，白字 |
+| `shortcut.pill` | `rgba(30,42,70,6%)`，r10，13px |
+| `preview.width / height / radius / bg / gap` | 430 / 337 / 16 / `#F6F6FD` / 20 |
+| `preview.arrow` | 18 × 40 三角形，尖端距主卡右缘 2px，对齐选中行垂直中心 |
+| `button.primary` | h50，r14，`#1468FD`，白字 |
 | `divider` | `#E6E8F3` |
 
 > 注：设计稿背景是 mockup 壁纸，取样颜色受其轻微影响；落地时以不透明近似值为准。
@@ -71,8 +72,8 @@
 
 | 阶段 | 内容 | 产出 / 验收 | 工时 |
 |---|---|---|---|
-| **M0 技术验证** | 见第 3 节三个风险点 | 6–8 张对比截图 + 结论；中文可输入并实时过滤；浮层定位正确 | 0.5–1d |
-| **M1 骨架与设计系统** | 窗口（无边框/尺寸/圆角/阴影/拖动/失焦隐藏）；`theme.rs` token；`fonts.rs`；`icons.rs` 9 个矢量图标；主布局 toolbar + list | 空窗口外框与设计稿一致 | 1–1.5d |
+| **M0 技术验证** | ✅ 已完成（2026-11-09）：三项决策门通过 | `docs/m0/` 对比截图 + [`REVIEW.md`](REVIEW.md)；中文输入并实时过滤；浮层定位/回焦可用 | 0.5d |
+| **M1 骨架与设计系统** | 窗口（无边框/尺寸/圆角/阴影/拖动/失焦隐藏）；`theme.rs` token；`fonts.rs`；`icons.rs` 9 个矢量图标；主布局 toolbar + list；浮层焦点回还与最后一行裁剪 | 空窗口外框与设计稿一致 | 1–1.5d |
 | **M2 工具栏 + 列表** | 5 个 tab（选中蓝 + 下划线 + hover 底色）；搜索胶囊（实时过滤）；窗口置顶/关闭；虚拟化滚动列表（行高 88）；行组件（图标块/截断/相对时间/Ctrl 胶囊/选中/hover）；mock 数据 8–10 条 | 与设计稿逐项对比；滚动不跳 | 2–2.5d |
 | **M3 预览浮层** | 第二 viewport 创建与定位（右 → 左 → 下、clamp 到工作区、箭头对齐）；内容三区（文本 / 图片 / 文件 / URL）；底部按钮组；切换 120ms 交叉淡化；进入浮层不关闭 | 任意行位置正确；贴边自动翻转；无闪烁 | 2–3d |
 | **M4 状态与交互** | 单一 `AppState`（selected 用 id 而非索引）；`Command` 枚举；↑ / ↓ / Enter / Esc / Delete / Ctrl+F / Ctrl+1..9；搜索框内仍可切换 | 键鼠状态一致；删空 / 过滤空不 panic | 1.5–2d |
@@ -105,7 +106,7 @@ src/
 
 ```toml
 [dependencies]
-eframe = { version = "0.37", default-features = false, features = ["glow"] }
+eframe = { version = "0.37", default-features = false, features = ["glow", "clipboard"] }
 egui = "0.37"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 ```

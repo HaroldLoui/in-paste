@@ -1,0 +1,76 @@
+# 计划评审与技术验证（2026-11-09）
+
+评审对象：`docs/PLAN.md`（v1 草案）、`ui.md`、`ui.png`。
+方式：逐像素测量设计稿 + 读 egui/eframe 0.37 源码 + 写 M0 spike 实机跑通（Windows，100% DPI）。
+结论：**方向可行，M0 三项决策门全部通过，可以进入 M1。** 但 PLAN 有 6 处需要按实测修正，另有 3 个风险需要在 M3/M4 前解决。
+
+## 1. M0 验证结果
+
+| 决策门 | 结果 | 证据 |
+| --- | --- | --- |
+| 无边框 + 透明 + 20px 圆角 + 自绘阴影 | 通过（100% 实机；125/150% 用 zoom+resize 模拟） | `docs/m0/01-100pct.png`、`04-dpi125.png`、`05-dpi150.png` |
+| 中文 IME：候选窗 / 组合输入 / 实时过滤 | 通过 | `02-ime-compose.png`、`03-ime-filter.png` |
+| 第二 viewport：透明 / 无边框 / 贴主窗 / 跟随选中行 / 独立阴影 | 通过（焦点问题有解，见 §3.1） | `01-100pct.png`、`06-keyboard-preview.png` |
+
+其他已验证：
+
+- `ctx.copy_text` 写入系统剪贴板成功（PowerShell `Get-Clipboard` 读回一致）。
+- 搜索框持有焦点时，`↑/↓` 仍先被 App 消费，选中行与浮层同步移动。
+- 浮层位置由主窗 `outer_rect` 推导（`card.right + 20`，`top = 行中心 - 66`），箭头尖端与选中行中心对齐。
+- 透明窗口的圆角外沿与阴影区透明正确，阴影下能看到桌面/后面窗口。
+
+## 2. 对 PLAN 的修正（实现必须遵守）
+
+1. **eframe 0.37 是 Ui-first App trait**：`fn ui(&mut self, ui: &mut egui::Ui, frame: &mut Frame)`（必需），`fn logic(&mut self, ctx, frame)`（可选）；旧的 `update(ctx, frame)` 不再存在。`CentralPanel::show` 也改成接收 `&mut Ui`。
+2. **依赖 features 必须是 `["glow", "clipboard"]`**。`default-features = false` 时 egui-winit 的 arboard 剪贴板不启用，`copy_text` 只写进程内 fallback，系统剪贴板不更新。
+3. **字体**：`default_fonts` 关闭后 `FontDefinitions::default()` 为空，必须 `ctx.set_fonts()` 手动加 msyh.ttc（face 0）+ segoeui.ttf；TTC 默认取 face 0（微软雅黑）。
+4. **设计 token 修正**（实测替换 PLAN 第 5 节）：
+   - window.bg `#F3F2FD`（PLAN #F4F5FD）
+   - accent `#1468FD`（PLAN #1C6FFB 偏亮；设计稿实测 #176AFC / 按钮 #1066FE）
+   - row.selected `#C6D9FE`（PLAN #CCDDFD）
+   - preview.bg `#F6F6FD`（PLAN #F8F8FD）
+   - row 底色 `#F6F6FC`，比卡片底色略亮，不能与 window.bg 混用
+   - Ctrl 胶囊：**半透明深色** `rgba(30,42,70,15/255)`，不是 #E9EBF7；叠在白行 ≈ #E9EBF4，叠在选中行 ≈ #BED0F6
+   - 列表：行高 88、列表起点 87（工具栏 78 + 9）、行距 89
+   - 预览：430×337、圆角 16、与主窗 gap 20、左缘三角 18×40（尖端距主卡右缘 2px）
+   - 底部按钮：复制 111×50 r14，footer 分隔线在卡底 -83
+5. **列表最后一行必须画完再裁剪**。当前 spike 用 `if row.bottom() > list_rect.bottom() { break; }` 导致第 5 行完全不画；设计稿是 5 行（第 5 行被卡片底边裁掉一部分）。改为正常绘制 + `with_clip_rect(list_rect)`。
+6. **字号**：列表标题 18（PLAN 未定）、时间 13、搜索占位 15–16、预览标题/正文 17–18（行高 34）、按钮 15–16、胶囊 13。spike 里 17/12 偏小。
+
+## 3. 风险与已找到的对策
+
+### 3.1 浮层抢键盘焦点（必须处理）
+
+实测：`with_active(false)` 只能避免创建时激活，**用户点击浮层时 Windows 仍会激活浮层窗口**，主窗失去键盘焦点，搜索/↑↓/Enter 全部失效。
+
+对策（已实测有效）：在浮层闭包里检测 `pointer.any_pressed()`，当浮层已获得焦点时向 ROOT 发送 `ViewportCommand::Focus`。日志顺序为 `preview refocus main → main focused = true`，随后复制按钮仍正常触发、键盘继续可用。
+
+另有创建瞬间的 3 帧焦点抖动（浮层先 focused，主窗随后取回）。M1 若浮层改为"按需显示"，每次显示后都要执行一次回焦。
+
+### 3.2 IME 与 Enter 的冲突
+
+- 组合输入期间按 Enter 会被 IME 消费，不会误触发"复制并关闭"（实测组合 "rust" 后 Enter，主窗未关闭）。
+- 提交后再按一次 Enter 才应触发复制关闭——M4 必须显式验证，并在组合状态下禁用 Enter 动作（egui 未暴露"正在组合"标志时，可用 `Event::Ime` 或 `TextEdit` 焦点 + 最近 IME 事件自行跟踪）。
+
+### 3.3 未覆盖项
+
+- 真实 125%/150% DPI：本机只有 100%，用 `set_zoom_factor` + 按比例放大窗口模拟，布局正确；混合 DPI 多显示器仍未测。
+- 屏幕边缘翻转、下方空间不足的换位（M3）。
+- 1000 条滚动性能、虚拟化（M5）。
+- 透明区域点击穿透：阴影留白会吞点击，原型可接受；后续可用 `WM_NCHITTEST` 返回 `HTTRANSPARENT`。
+- 失焦隐藏与浮层互斥：浮层获得焦点会让主窗失焦。本期原型不做失焦隐藏；若 M5 要加，需要"主窗与浮层都失焦才隐藏"或延时判定。
+
+## 4. 架构决定
+
+- **保留双窗口方案**（PLAN 决策 5 不变），浮层用 `show_viewport_immediate` 每帧驱动位置/尺寸，必须带 §3.1 的回焦逻辑。
+- 主窗布局全部用逻辑点（points），窗口 `with_inner_size(868×608)`，由 eframe 按 DPI 自动换算物理像素。
+- `window.rs` 职责明确为：主窗/浮层 builder、浮层位置计算、focus 策略；浮层尺寸常量 `18+430+28 × 337+56`。
+- 模块结构沿用 PLAN 第 8 节，spike 代码按模块拆分后进入 M1；`icons.rs` 用 24×24 网格、2px 圆角描边重画（当前手绘的 link/image/pdf/pin/trash 均不达设计稿）。
+- 状态仍按 PLAN：单一 AppState、`selected` 用 id、Command 枚举。
+
+## 5. 里程碑调整
+
+- M0 完成（0.5 天内），产出 6 张截图 + 本评审。
+- M1 增加：模块拆分、`clipboard` feature、focus 回焦、最后一行裁剪、token 落地。
+- M1/M2 可合并排期（2–3 天）；M3 的定位/翻转按 §3.3 补测。
+- 其余里程碑与工作量维持 PLAN 第 7 节。

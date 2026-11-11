@@ -1,32 +1,56 @@
-//! 主卡顶部工具栏：第一行是搜索胶囊与窗口按钮，第二行是分类图标。
+//! 主卡顶部工具栏：第一行是整行搜索胶囊，第二行是分类图标 + 置顶 / 设置。
 //!
-//! 竖长版布局把分类图标从搜索栏左侧移到了搜索栏下方，
-//! 搜索胶囊宽度按卡片宽度自适应。
+//! 两行布局让窄卡片也有足够的图标间距；第二行右侧留白同时充当
+//! 「拖动窗口」的抓取区。
 
-use eframe::egui::{Align2, Color32, CornerRadius, FontFamily, FontId, Painter, Rect, pos2, vec2};
+use eframe::egui::{
+    Align2, Color32, CornerRadius, FontFamily, FontId, Painter, Pos2, Rect, pos2, vec2,
+};
 
 use crate::icons;
-use crate::theme::{ACCENT, NAVY, PLACEHOLDER, SEARCH_BG};
+use crate::theme::{ACCENT, CARD_BG, NAVY, PILL, PLACEHOLDER, SEARCH_BG, TILE_NORMAL};
+
 use crate::ui::rr;
 
-/// 搜索栏所在行的垂直中心。
-pub const SEARCH_CY: f32 = 47.0;
 /// 分类图标行的垂直中心。
 pub const TABS_CY: f32 = 112.0;
 
-/// 右侧「置顶」按钮中心距卡片右缘的距离。
-const PIN_INSET: f32 = 99.0;
-/// 搜索胶囊右缘到「置顶」图标中心的间距。
-const SEARCH_GAP: f32 = 57.0;
-/// 卡片左内边距。
 const PAD_X: f32 = 30.0;
+const TAB_FIRST: f32 = 44.0;
+const TAB_GAP: f32 = 72.0;
+const PIN_INSET: f32 = 99.0;
+const SETTINGS_INSET: f32 = 43.0;
 
-pub fn draw(p: &Painter, card: Rect) {
+/// 各个可点击/可拖动区域。
+pub struct Hits {
+    pub tabs: [Rect; 5],
+    pub pin: Rect,
+    pub settings: Rect,
+    drag: [Rect; 4],
+}
+
+impl Hits {
+    /// 该点是否落在窗口拖动热区（工具栏留白、卡片上下留白）。
+    pub fn is_drag(&self, pos: Pos2) -> bool {
+        self.drag.iter().any(|r| r.contains(pos))
+    }
+
+    /// 该点命中的分类页签。
+    pub fn tab_at(&self, pos: Pos2) -> Option<usize> {
+        self.tabs.iter().position(|r| r.contains(pos))
+    }
+}
+
+fn icon_button(center: Pos2) -> Rect {
+    Rect::from_center_size(center, vec2(38.0, 38.0))
+}
+
+pub fn draw(p: &Painter, card: Rect, tab: usize, pinned: bool, pointer: Option<Pos2>) -> Hits {
     let w = card.width();
-    let pin_x = w - PIN_INSET;
+    let highlighted = |r: Rect| pointer.is_some_and(|pos| r.contains(pos));
 
-    // 第一行：搜索胶囊 + 置顶 / 关闭
-    let search = rr(card, PAD_X, 18.0, pin_x - SEARCH_GAP - PAD_X, 58.0);
+    // 第一行：整行搜索胶囊
+    let search = rr(card, PAD_X, 18.0, w - 2.0 * PAD_X, 58.0);
     p.rect_filled(search, CornerRadius::same(29), SEARCH_BG);
     icons::icon_bold(
         p,
@@ -43,30 +67,74 @@ pub fn draw(p: &Painter, card: Rect) {
         PLACEHOLDER,
     );
 
-    icons::icon_bold(p, card.min + vec2(pin_x, SEARCH_CY), 26.0, '\u{E840}', NAVY);
-    icons::icon(
-        p,
-        card.min + vec2(w - 43.0, SEARCH_CY),
-        21.0,
-        '\u{E711}',
-        NAVY,
-    );
+    // 第二行：分类图标
+    let mut tabs = [Rect::NOTHING; 5];
+    for (i, rect) in tabs.iter_mut().enumerate() {
+        let center = card.min + vec2(TAB_FIRST + TAB_GAP * i as f32, TABS_CY);
+        *rect = icon_button(center);
+        if highlighted(*rect) {
+            p.rect_filled(*rect, CornerRadius::same(12), TILE_NORMAL);
+        }
+    }
 
-    // 第二行：分类图标（左对齐），选中的第一个图标下方带指示线
-    icons::grid(p, card.min + vec2(44.0, TABS_CY), ACCENT);
-    icons::letter_t(p, card.min + vec2(104.0, TABS_CY), NAVY);
-    icons::image(p, card.min + vec2(164.0, TABS_CY), NAVY);
-    icons::file(p, card.min + vec2(224.0, TABS_CY), NAVY);
-    icons::link(
-        p,
-        card.min + vec2(284.0, TABS_CY),
-        NAVY,
-        crate::theme::CARD_BG,
-    );
+    let color = |i: usize| if i == tab { ACCENT } else { NAVY };
+    icons::grid(p, tabs[0].center(), color(0));
+    icons::letter_t(p, tabs[1].center(), color(1));
+    icons::image(p, tabs[2].center(), color(2));
+    icons::file(p, tabs[3].center(), color(3));
+    icons::link(p, tabs[4].center(), color(4), CARD_BG);
 
+    // 选中页签下方的指示线
     p.rect_filled(
-        rr(card, 29.0, 132.0, 30.0, 3.0),
+        rr(
+            card,
+            tabs[tab].center().x - card.left() - 15.0,
+            132.0,
+            30.0,
+            3.0,
+        ),
         CornerRadius::same(2),
         ACCENT,
     );
+
+    // 第二行右侧：置顶 / 设置
+    let pin_center = card.min + vec2(w - PIN_INSET, TABS_CY);
+    let settings_center = card.min + vec2(w - SETTINGS_INSET, TABS_CY);
+    let pin = icon_button(pin_center);
+    let settings = icon_button(settings_center);
+    if highlighted(pin) {
+        p.rect_filled(pin, CornerRadius::same(10), PILL);
+    }
+    if highlighted(settings) {
+        p.rect_filled(settings, CornerRadius::same(10), PILL);
+    }
+    icons::icon_bold(
+        p,
+        pin_center,
+        24.0,
+        '\u{E840}',
+        if pinned { ACCENT } else { NAVY },
+    );
+    icons::icon_bold(p, settings_center, 23.0, '\u{E713}', NAVY);
+
+    // 拖动热区：两条水平留白 + 第二行右侧空白 + 卡片底边
+    let drag = [
+        rr(card, 0.0, 0.0, w, 16.0),
+        rr(card, 0.0, 78.0, w, 16.0),
+        rr(
+            card,
+            TAB_FIRST + TAB_GAP * 5.0,
+            92.0,
+            (w - (PIN_INSET + 24.0) - (TAB_FIRST + TAB_GAP * 5.0)).max(0.0),
+            40.0,
+        ),
+        rr(card, 0.0, card.height() - 12.0, w, 12.0),
+    ];
+
+    Hits {
+        tabs,
+        pin,
+        settings,
+        drag,
+    }
 }

@@ -5,6 +5,7 @@
 pub mod list;
 pub mod preview;
 pub mod row;
+pub mod settings;
 pub mod toolbar;
 
 use eframe::egui::{

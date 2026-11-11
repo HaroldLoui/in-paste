@@ -4,6 +4,7 @@
 
 mod app;
 mod fonts;
+mod hotkey;
 mod icons;
 mod model;
 mod theme;

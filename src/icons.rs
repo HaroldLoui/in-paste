@@ -11,17 +11,6 @@ use eframe::egui::{
 
 use crate::fonts;
 
-/// 用图标字体画一个字形。
-pub fn icon(p: &Painter, center: Pos2, size: f32, ch: char, color: Color32) {
-    p.text(
-        center + vec2(0.0, 1.0),
-        Align2::CENTER_CENTER,
-        ch,
-        FontId::new(size, fonts::icons_family()),
-        color,
-    );
-}
-
 /// 图标字体比设计稿的线细，叠四次制造加粗效果。
 pub fn icon_bold(p: &Painter, center: Pos2, size: f32, ch: char, color: Color32) {
     for (dx, dy) in [(-0.55, 0.0), (0.55, 0.0), (0.0, -0.55), (0.0, 0.55)] {

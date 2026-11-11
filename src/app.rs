@@ -529,10 +529,10 @@ impl eframe::App for UiApp {
                         Some(index)
                     };
                 }
-                // 点击窗口留白（卡片与预览卡之外）→ 收起
+                // 点击窗口留白（卡片与预览卡之外）→ 收起；钉住时不收起。
                 let inside =
                     card.contains(pos) || preview_area.is_some_and(|area| area.contains(pos));
-                if !handled && !inside && self.resize.is_none() {
+                if !handled && !inside && !self.pinned && self.resize.is_none() {
                     self.hide(&ctx, frame);
                 }
             }

@@ -7,7 +7,8 @@ use eframe::egui::{
 };
 
 use crate::fonts::bold_family;
-use crate::theme::{BODY, DIVIDER, INK, MUTED, RED, SWITCH_OFF, SWITCH_ON, TILE_NORMAL};
+use crate::icons;
+use crate::theme::{BODY, DIVIDER, INK, MUTED, PILL, RED, SWITCH_OFF, SWITCH_ON, TILE_NORMAL};
 use crate::ui::rr;
 
 /// 设置页可点击区域。
@@ -57,16 +58,25 @@ pub fn draw(p: &Painter, card: Rect, auto_hide: bool, pinned: bool, pointer: Opt
         MUTED,
     );
 
-    let back = rr(card, card.width() - 96.0, 34.0, 66.0, 30.0);
-    if highlighted(back) {
-        p.rect_filled(back, CornerRadius::same(8), TILE_NORMAL);
-    }
+    let back = rr(card, card.width() - 108.0, 32.0, 84.0, 34.0);
+    p.rect_filled(
+        back,
+        CornerRadius::same(9),
+        if highlighted(back) { PILL } else { TILE_NORMAL },
+    );
+    icons::icon_bold(
+        p,
+        pos2(back.left() + 22.0, back.center().y),
+        15.0,
+        '\u{E72B}',
+        BODY,
+    );
     p.text(
-        back.center(),
-        Align2::CENTER_CENTER,
+        pos2(back.left() + 34.0, back.center().y),
+        Align2::LEFT_CENTER,
         "返回",
-        FontId::new(16.0, FontFamily::Proportional),
-        MUTED,
+        FontId::new(15.5, FontFamily::Proportional),
+        BODY,
     );
 
     p.line_segment(
@@ -131,7 +141,7 @@ pub fn draw(p: &Painter, card: Rect, auto_hide: bool, pinned: bool, pointer: Opt
         p.rect_filled(exit, CornerRadius::same(12), TILE_NORMAL);
     }
     p.text(
-        card.min + vec2(46.0, exit.center().y),
+        pos2(exit.left() + 16.0, exit.center().y),
         Align2::LEFT_CENTER,
         "退出 in-paste",
         FontId::new(18.0, FontFamily::Proportional),

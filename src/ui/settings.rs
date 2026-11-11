@@ -47,14 +47,14 @@ pub fn draw(p: &Painter, card: Rect, auto_hide: bool, pinned: bool, pointer: Opt
         card.min + vec2(30.0, 48.0),
         Align2::LEFT_CENTER,
         "设置",
-        FontId::new(27.0, bold_family()),
+        FontId::new(24.0, bold_family()),
         INK,
     );
     p.text(
         card.min + vec2(30.0, 82.0),
         Align2::LEFT_CENTER,
         "in-paste · UI 原型 v0.1",
-        FontId::new(15.0, FontFamily::Proportional),
+        FontId::new(16.5, FontFamily::Proportional),
         MUTED,
     );
 
@@ -75,7 +75,7 @@ pub fn draw(p: &Painter, card: Rect, auto_hide: bool, pinned: bool, pointer: Opt
         pos2(back.left() + 34.0, back.center().y),
         Align2::LEFT_CENTER,
         "返回",
-        FontId::new(15.5, FontFamily::Proportional),
+        FontId::new(16.5, FontFamily::Proportional),
         BODY,
     );
 
@@ -92,7 +92,7 @@ pub fn draw(p: &Painter, card: Rect, auto_hide: bool, pinned: bool, pointer: Opt
         card.min + vec2(30.0, 138.0),
         Align2::LEFT_CENTER,
         "呼出面板",
-        FontId::new(18.0, FontFamily::Proportional),
+        FontId::new(20.0, FontFamily::Proportional),
         BODY,
     );
     let pill = Rect::from_min_size(
@@ -104,7 +104,7 @@ pub fn draw(p: &Painter, card: Rect, auto_hide: bool, pinned: bool, pointer: Opt
         pill.center(),
         Align2::CENTER_CENTER,
         "Ctrl + Shift + V",
-        FontId::new(16.0, FontFamily::Proportional),
+        FontId::new(17.5, FontFamily::Proportional),
         INK,
     );
 
@@ -120,7 +120,7 @@ pub fn draw(p: &Painter, card: Rect, auto_hide: bool, pinned: bool, pointer: Opt
             pos2(card.min.x + 36.0, row.center().y),
             Align2::LEFT_CENTER,
             label,
-            FontId::new(18.0, FontFamily::Proportional),
+            FontId::new(20.0, FontFamily::Proportional),
             BODY,
         );
     }
@@ -144,7 +144,7 @@ pub fn draw(p: &Painter, card: Rect, auto_hide: bool, pinned: bool, pointer: Opt
         pos2(exit.left() + 16.0, exit.center().y),
         Align2::LEFT_CENTER,
         "退出 in-paste",
-        FontId::new(18.0, FontFamily::Proportional),
+        FontId::new(20.0, FontFamily::Proportional),
         RED,
     );
 
@@ -152,7 +152,7 @@ pub fn draw(p: &Painter, card: Rect, auto_hide: bool, pinned: bool, pointer: Opt
         card.min + vec2(30.0, card.height() - 40.0),
         Align2::LEFT_CENTER,
         "按 Esc 返回列表 · 点击卡片外会隐藏面板",
-        FontId::new(14.0, FontFamily::Proportional),
+        FontId::new(15.5, FontFamily::Proportional),
         MUTED,
     );
 

@@ -1,8 +1,10 @@
 # in-paste 开发计划（v1）
 
-> 状态：已评审（2026-11-09），M0 技术验证通过；评审记录见 [`REVIEW.md`](REVIEW.md)  
+> 状态：已评审（2026-11-09），M0 技术验证通过；UI 原型已迭代到「交互重构」版本，现状见 §11 与 [`REVIEW.md`](REVIEW.md) §7  
 > 基线需求：[`ui.md`](../ui.md)、设计稿 [`ui.png`](../ui.png)  
 > 本期目标：**只做 UI 原型**（mock 数据），不做真实剪贴板监听、持久化、全局热键、托盘。
+
+> 注：§1、§8 是 v1 计划原文，交互相关的「Ctrl+N 胶囊 / 预览底部按钮 / 关闭按钮」已在 2026-11-11 按外部反馈调整，以 §11 为准。
 
 ## 1. 产品与范围
 
@@ -84,21 +86,21 @@
 
 ```
 src/
-├─ main.rs          # eframe 启动、字体/主题初始化
-├─ app.rs           # App 实现，窗口命令与浮层生命周期
-├─ state.rs         # AppState / Command / 派生过滤与选中逻辑
-├─ model.rs         # ClipItem / ClipKind / mock 数据 / 相对时间格式
-├─ theme.rs         # 颜色、字号、间距、圆角、阴影、动效时长
+├─ main.rs          # eframe 启动，组装 window / app
+├─ app.rs           # App 实现：视图状态、窗口尺寸与隐藏/显示、拖动缩放、交互分发
+├─ hotkey.rs        # 全局热键 Ctrl+Shift+V（global-hotkey，独立线程写原子标记）
+├─ model.rs         # 记录类型 / mock 数据 / 分类过滤
+├─ theme.rs         # 颜色、字号、间距、圆角、尺寸公式与最小尺寸
 ├─ fonts.rs         # 系统字体加载与回退
 ├─ icons.rs         # 矢量图标绘制
-├─ window.rs        # 主窗口与预览 viewport 的创建、定位
-├─ shortcuts.rs     # 快捷键 → Command 映射
+├─ window.rs        # 窗口创建、无边框样式剥离、WM_NCCALCSIZE 子类化、cloak 隐藏、光标/前台查询
 └─ ui/
-   ├─ mod.rs
-   ├─ toolbar.rs
-   ├─ list.rs
-   ├─ row.rs
-   └─ preview.rs    # 浮层内容（在第二 viewport 中运行）
+   ├─ mod.rs        # 卡片与阴影绘制、圆角矩形辅助
+   ├─ toolbar.rs    # 搜索胶囊 + 分类图标 + 窗口置顶 / 设置 + 拖动热区
+   ├─ list.rs       # 列表滚动、点击命中、行内按钮动作
+   ├─ row.rs        # 单行：图标块 / 标题 / 时间 / hover 或选中时的三个小按钮
+   ├─ preview.rs    # 右侧预览卡（单窗口横向扩展）
+   └─ settings.rs   # 设置页：呼出快捷键、自动隐藏、窗口置顶、退出
 ```
 
 ## 7. 依赖（仅原型）
@@ -107,10 +109,12 @@ src/
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["glow", "clipboard"] }
 egui = "0.37"
+global-hotkey = "0.9"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+raw-window-handle = "0.6"
 ```
 
-不引入：SQLite、serde、托盘、全局热键、剪贴板监听、自动粘贴相关的 crate。
+不引入：SQLite、serde、托盘、剪贴板监听、自动粘贴相关的 crate。
 
 ## 8. 验收清单
 
@@ -137,14 +141,33 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 
 真实剪贴板监听 → SQLite 持久化 → 全局热键呼出 → 托盘与开机自启 → （可选）自动粘贴。
 
-## 11. 实现现状（2026-11-11）
+## 11. 实现现状（2026-11-11，交互重构后）
 
-当前仓库里的版本是**纯 UI 原型**，已落地部分：
+### 11.1 交互模型
 
-- **窗口**：设计坐标 720 × 920、主卡 672 × 816；实际尺寸 = 设计点 × `UI_SCALE(2/3)` × DPI 缩放。150% 主屏为 720×920 物理像素，100% 副屏为 480×613；选中后横向展开到 1171×920（150%）/ 781×613（100%）。
-- **无边框**：winit 走「有装饰」创建，`window::strip_system_frame` 每帧剥 `WS_CAPTION` 等样式并关闭 DWM 非客户区，规避无边框窗口的 1px 预留与阴影问题。
-- **DPI**：首帧用 `GetDpiForWindow` 把尺寸换算成物理像素；混合 DPI 双屏（2560×1600@150% + 2560×1440@100%）启动与来回拖拽均验证通过。此前 150% 下首帧只画左上角的问题已修复（原因：`SetWindowPos` 单位是物理像素却传了逻辑点）。
-- **工具栏**：两行（搜索 + 置顶/关闭；分类图标 + 下划线）。
-- **列表**：8 条 mock 数据，行高 81（首行 90），图标块 64，快捷键胶囊右对齐。
-- **预览**：单窗口向右扩展，同窗透明区绘制预览卡（gap 20、左缘 18×40 三角、自绘阴影）。
-- **未实现**：真实剪贴板数据、搜索过滤、键盘导航/快捷键、复制/置顶/删除动作、托盘、持久化（均属后续里程碑）。
+- **无快捷键胶囊**：列表行不显示 `Ctrl + N`，也不处理 `Ctrl + 数字`；用鼠标点选。
+- **行内三按钮**：行被 hover 或选中时，右侧出现「复制 / 置顶（记录）/ 删除」三个 34×34 按钮；复制 = 复制内容 + 收起面板。
+- **预览卡**：选中行后出现在右侧；已去掉页脚按钮组与分隔线，高度 338 → 240。所有行操作都在行内完成。
+- **齿轮替换关闭按钮**：工具栏右侧是「窗口置顶」与「设置」；收起面板改为点卡片外、`Esc`、失焦自动隐藏、全局热键四种方式。
+- **设置页**：呼出快捷键展示（`Ctrl + Shift + V`）、失焦自动隐藏开关、窗口置顶开关、退出、返回。
+- **两种「置顶」**：工具栏置顶 = 窗口 `AlwaysOnTop` 且失焦不自动隐藏；记录置顶只影响排序与图标颜色。
+- **呼出/收起**：全局热键 `Ctrl + Shift + V`；失焦自动隐藏（设置可关，`INPASTE_NO_AUTOHIDE=1` 可强制关）；点击卡片/预览外收起；`Esc` 从设置返回列表、再按收起。
+- **拖动与缩放**：两行工具栏之间的留白、第二行右侧留白、卡片上下留白可拖动窗口；四边四角 7px 热区可缩放，最小卡片 460×420（窗口 508×484）。卡片尺寸是权威状态，窗口变大时卡片跟着变宽。
+
+### 11.2 窗口与 DPI
+
+- **无装饰创建**（`with_decorations(false)`）：`decorations(true)` + 每帧剥样式会在 winit 重贴 `WS_CAPTION` 时把客户区撑大（每次 +22×+56），尺寸越用越大，故改为无装饰创建从根上避开。
+- **每帧兜底**：`window::strip_system_frame` 剥 `WS_CAPTION / WS_THICKFRAME / WS_MINIMIZEBOX / WS_MAXIMIZEBOX / WS_SYSMENU`，并强制 `WS_EX_TOOLWINDOW`（cloak 隐藏后不出现在 Alt+Tab / 任务栏）。
+- **隐藏用 DWM cloak**（`DWMWA_CLOAK`）而不是 `ShowWindow`：后者重新显示后会在顶部留 1px 白色条带；隐藏时把前台窗口还给唤出前的窗口。
+- **顶部 1px 亮线**：winit 无装饰窗口的客户区原点比窗口低 1px（实测 `window=(920,340)`、`client=(920,341)`），透明窗口会露出这条非客户区。修复：首帧 `SetWindowSubclass` 接管 `WM_NCCALCSIZE`，让客户区铺满整窗；DPI 变化、cloak 显隐后仍有效。
+- **尺寸公式**：窗口 = `theme::window_size(card, expanded)` = `(card.x + 48 + expanded ? (20 + 431) : 0, card.y + 104)`，卡片不小于 460×420。`UI_SCALE = 2/3` 统一缩放。
+- **实测尺寸**：150% 主屏收起 720×920、展开 1171×920；100% 副屏收起 480×613、展开 781×613；跨屏拖动按 DIP 保持视觉尺寸（150% ↔ 100% 均验证）。
+- **混合 DPI**（2560×1600@150% + 2560×1440@100%）：启动、展开、拖动、缩放、跨屏均验证通过。
+
+### 11.3 质量门
+
+`cargo build` 与 `cargo clippy --all-targets` 均 0 warning，`cargo fmt --check` 通过。验证脚本与截图放在 `.tmp/`（未入库）。
+
+### 11.4 未实现
+
+真实剪贴板监听、搜索过滤、键盘导航、SQLite 持久化、托盘、开机自启、自动粘贴（均属后续里程碑）。

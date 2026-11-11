@@ -32,14 +32,14 @@ impl Item {
         match self.kind {
             Kind::Text => ["这是一个示例文本，", "展示剪贴板工具的效果。"],
             Kind::Image => ["风景图片.png", "1920 × 1080 · 2.4 MB"],
-            Kind::Link => ["https://www.rust-lang.org/", "Rust 编程语言官网"],
-            Kind::Pdf => ["design_spec.pdf", "PDF 文档 · 2.5 MB"],
-            Kind::Rich => ["使用 Rust 开发高效的工具", "Rust 工具链与生态"],
+            Kind::Link => [self.title, ""],
+            Kind::Pdf => [self.title, "PDF 文档 · 2.5 MB"],
+            Kind::Rich => [self.title, ""],
         }
     }
 }
 
-pub const ITEMS: [Item; 5] = [
+pub const ITEMS: [Item; 8] = [
     Item {
         kind: Kind::Text,
         title: "这是一个示例文本，展示剪贴板工具的效果...",
@@ -69,5 +69,23 @@ pub const ITEMS: [Item; 5] = [
         title: "使用 Rust 开发高效的工具...",
         meta: "5 分钟前",
         key: "Ctrl + 5",
+    },
+    Item {
+        kind: Kind::Text,
+        title: "cargo fmt --all && cargo clippy --all-targets",
+        meta: "8 分钟前",
+        key: "Ctrl + 6",
+    },
+    Item {
+        kind: Kind::Link,
+        title: "https://docs.rs/eframe/latest/eframe/",
+        meta: "12 分钟前",
+        key: "Ctrl + 7",
+    },
+    Item {
+        kind: Kind::Rich,
+        title: "本周迭代范围：DPI 修复与窗口布局",
+        meta: "18 分钟前",
+        key: "Ctrl + 8",
     },
 ];

@@ -7,18 +7,23 @@ use eframe::egui::{
 use crate::icons;
 use crate::model::{Item, Kind};
 use crate::theme::{
-    INK, MUTED, NAVY, PILL, PILL_SELECTED, RED, ROW_H, ROW_INSET, ROW_W, ROW0_H, SELECT, TILE,
-    TILE_NORMAL, TILE_PDF, TILE_SELECTED,
+    INK, LIST_TOP, MUTED, NAVY, PILL, PILL_SELECTED, RED, ROW_H, ROW_INSET, ROW_W, ROW0_H, SELECT,
+    TILE, TILE_NORMAL, TILE_PDF, TILE_SELECTED,
 };
 use crate::ui::rr;
 
+/// 第 `index` 行的顶部（卡片坐标系）。
+fn top_of(index: usize) -> f32 {
+    if index == 0 {
+        LIST_TOP
+    } else {
+        LIST_TOP + ROW0_H + (index as f32 - 1.0) * ROW_H
+    }
+}
+
 /// 第 `index` 行的矩形（卡片坐标系）。
 pub fn rect(card: Rect, index: usize) -> Rect {
-    let top = if index == 0 {
-        89.0
-    } else {
-        179.0 + (index as f32 - 1.0) * ROW_H
-    };
+    let top = top_of(index);
     let height = if index == 0 { ROW0_H } else { ROW_H };
     rr(card, ROW_INSET, top, ROW_W, height)
 }
@@ -31,11 +36,7 @@ pub fn draw(
     thumb: Option<&TextureHandle>,
     selected: bool,
 ) {
-    let top = if index == 0 {
-        89.0
-    } else {
-        179.0 + (index as f32 - 1.0) * ROW_H
-    };
+    let top = top_of(index);
     let height = if index == 0 { ROW0_H } else { ROW_H };
 
     if selected {
@@ -81,7 +82,12 @@ pub fn draw(
     }
 
     let title_top = top + if selected { 23.0 } else { 22.0 };
-    p.text(
+    // 标题单行裁剪，避免长文本压到右侧快捷键胶囊上。
+    let title_clip = Rect::from_min_max(
+        card.min + vec2(110.0, title_top),
+        card.min + vec2(card.width() - 150.0, title_top + 34.0),
+    );
+    p.with_clip_rect(title_clip).text(
         card.min + vec2(110.0, title_top + 10.0),
         Align2::LEFT_CENTER,
         item.title,
@@ -100,7 +106,10 @@ pub fn draw(
 
     // 快捷键胶囊
     let center_y = top + if selected { 47.0 } else { 45.0 };
-    let pill = Rect::from_min_size(card.min + vec2(638.0, center_y - 21.0), vec2(110.0, 42.0));
+    let pill = Rect::from_min_size(
+        card.min + vec2(card.width() - 140.0, center_y - 21.0),
+        vec2(110.0, 42.0),
+    );
     p.rect_filled(
         pill,
         CornerRadius::same(11),

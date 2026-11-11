@@ -5,7 +5,7 @@ use eframe::egui::{Color32, Rect, TextureHandle, TextureOptions, ViewportCommand
 use crate::model::ITEMS;
 use crate::theme::{
     BASE_H, CARD_BG, CARD_H, CARD_R, CARD_W, CARD_X, CARD_Y, FULL_W, PREVIEW_H, PREVIEW_W,
-    PREVIEW_X,
+    PREVIEW_X, UI_SCALE,
 };
 use crate::{fonts, ui, window};
 
@@ -17,6 +17,8 @@ pub struct UiApp {
 impl UiApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         fonts::install(&cc.egui_ctx);
+        // 内部布局仍按设计稿点数计算，靠 zoom 统一缩放成实际界面尺寸。
+        cc.egui_ctx.set_zoom_factor(UI_SCALE);
         Self {
             thumb: load_thumb(&cc.egui_ctx),
             selected: None,
@@ -30,7 +32,10 @@ impl eframe::App for UiApp {
     }
 
     fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame) {
-        window::strip_system_frame(frame);
+        if window::strip_system_frame(frame) {
+            // 窗口尺寸/样式刚被校正过，立即按新画布重绘，避免首帧只画出左上角。
+            ui.ctx().request_repaint();
+        }
 
         let full = ui.max_rect();
         let origin = full.min;

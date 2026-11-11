@@ -5,28 +5,37 @@ use eframe::egui::Color32;
 
 // ---------------------------------------------------------------- 窗口 / 卡片
 
+/// 界面整体缩放系数（相对设计稿点数）。
+///
+/// 0.667 ≈ 缩小 1/3：窗口的原生逻辑尺寸、以及 egui 的绘制尺寸都按这个系数收，
+/// 但内部布局仍用设计稿坐标（720×920 点），改这里即可整体放大/缩小。
+pub const UI_SCALE: f32 = 2.0 / 3.0;
+
 /// 仅显示主卡时的窗口宽度。
-pub const BASE_W: f32 = 828.0;
+pub const BASE_W: f32 = 720.0;
 /// 窗口高度。
-pub const BASE_H: f32 = 620.0;
+pub const BASE_H: f32 = 920.0;
 /// 展开预览后的窗口宽度。
-pub const FULL_W: f32 = 1279.0;
+pub const FULL_W: f32 = 1171.0;
 
 pub const CARD_X: f32 = 24.0;
 pub const CARD_Y: f32 = 40.0;
-pub const CARD_W: f32 = 780.0;
-pub const CARD_H: f32 = 516.0;
+pub const CARD_W: f32 = 672.0;
+/// 卡片高度按 8 行内容取整：列表起点 146 + 首行 90 + 7×81 + 底部留白 13。
+pub const CARD_H: f32 = 816.0;
 pub const CARD_R: u8 = 20;
 
-pub const PREVIEW_X: f32 = 824.0;
+pub const PREVIEW_X: f32 = 716.0;
 pub const PREVIEW_W: f32 = 431.0;
 pub const PREVIEW_H: f32 = 338.0;
 pub const PREVIEW_R: u8 = 18;
 
 // ---------------------------------------------------------------- 列表行
 
+/// 列表第一行的顶部（工具栏两行：搜索栏 + 分类图标行）。
+pub const LIST_TOP: f32 = 146.0;
 pub const ROW_INSET: f32 = 10.0;
-pub const ROW_W: f32 = 758.0;
+pub const ROW_W: f32 = 652.0;
 pub const ROW_H: f32 = 81.0;
 pub const ROW0_H: f32 = 90.0;
 pub const TILE: f32 = 64.0;

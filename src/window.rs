@@ -13,7 +13,10 @@ pub fn native_options() -> eframe::NativeOptions {
     eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_title("in-paste")
-            .with_inner_size([theme::BASE_W, theme::BASE_H])
+            .with_inner_size([
+                theme::BASE_W * theme::UI_SCALE,
+                theme::BASE_H * theme::UI_SCALE,
+            ])
             .with_decorations(true)
             .with_transparent(true)
             .with_has_shadow(false)
@@ -53,6 +56,7 @@ mod platform {
     unsafe extern "system" {
         fn SetWindowLongPtrW(hwnd: isize, index: i32, value: isize) -> isize;
         fn GetWindowLongPtrW(hwnd: isize, index: i32) -> isize;
+        fn GetDpiForWindow(hwnd: isize) -> u32;
         fn SetWindowPos(
             hwnd: isize,
             after: isize,
@@ -83,7 +87,9 @@ mod platform {
 
     static FRAME_INIT: AtomicBool = AtomicBool::new(false);
 
-    pub fn strip_system_frame(frame: &eframe::Frame) {
+    /// 剥离系统边框并校正窗口尺寸；本帧动过窗口时返回 true，调用方应请求重绘。
+    pub fn strip_system_frame(frame: &eframe::Frame) -> bool {
+        let mut resized = false;
         if let Ok(handle) = frame.window_handle() {
             if let RawWindowHandle::Win32(w) = handle.as_raw() {
                 let hwnd = w.hwnd.get();
@@ -131,25 +137,39 @@ mod platform {
 
                         // decorations(true) 时 winit 按带标题栏的外框算了一次尺寸，
                         // 样式剥掉后把窗口收回成客户区大小。
+                        //
+                        // SetWindowPos 的单位是物理像素，必须按窗口当前 DPI 换算，
+                        // 并叠加界面整体缩放系数 UI_SCALE。
+                        // 直接传 BASE_W/BASE_H 时，150% 缩放下窗口只有设计尺寸的
+                        // 2/3，egui 拿到的画布也随之变小，首帧就只画出左上角一块；
+                        // 点击行触发 InnerSize（逻辑点）后才恢复正常。
+                        let dpi = GetDpiForWindow(hwnd).max(96) as f32;
+                        let scale = dpi / 96.0;
+                        let w = (theme::BASE_W * theme::UI_SCALE * scale).round() as i32;
+                        let h = (theme::BASE_H * theme::UI_SCALE * scale).round() as i32;
                         SetWindowPos(
                             hwnd,
                             0,
                             0,
                             0,
-                            theme::BASE_W as i32,
-                            theme::BASE_H as i32,
+                            w,
+                            h,
                             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                         );
+                        resized = true;
                     }
                 }
             }
         }
+        resized
     }
 }
 
 #[cfg(not(windows))]
 mod platform {
-    pub fn strip_system_frame(_frame: &eframe::Frame) {}
+    pub fn strip_system_frame(_frame: &eframe::Frame) -> bool {
+        false
+    }
 }
 
 pub use platform::strip_system_frame;

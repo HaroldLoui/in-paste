@@ -156,18 +156,27 @@ raw-window-handle = "0.6"
 
 ### 11.2 窗口与 DPI
 
-- **无装饰创建**（`with_decorations(false)`）：`decorations(true)` + 每帧剥样式会在 winit 重贴 `WS_CAPTION` 时把客户区撑大（每次 +22×+56），尺寸越用越大，故改为无装饰创建从根上避开。
-- **每帧兜底**：`window::strip_system_frame` 剥 `WS_CAPTION / WS_THICKFRAME / WS_MINIMIZEBOX / WS_MAXIMIZEBOX / WS_SYSMENU`，并强制 `WS_EX_TOOLWINDOW`（cloak 隐藏后不出现在 Alt+Tab / 任务栏）。
+- **无装饰创建**（`with_decorations(false)`）。注意 winit 0.30 的「无边框」其实是**保留 `WS_CAPTION|WS_BORDER|...` 样式、靠 `WM_NCCALCSIZE` 把非客户区吃掉**，并会在窗口属性 diff 时用 `to_window_styles()` 反复重写整套样式。早期做法是每帧把装饰样式剥掉，会和 winit 的样式重写互相打架（实测每次重写把客户区撑大 22×56）。
+- **首帧窗口子类化**（`window::init_window`）：`SetWindowSubclass` 接管两个消息——
+  - `WM_STYLECHANGING`：在系统应用前过滤掉 `WS_CAPTION / WS_THICKFRAME / WS_MINIMIZEBOX / WS_MAXIMIZEBOX / WS_SYSMENU`，并强制 `WS_EX_TOOLWINDOW`、清 `WS_EX_APPWINDOW`。winit 之后再重写样式也只会被过滤，窗口不会再真正进入「有 caption」状态。
+  - `WM_NCCALCSIZE`：客户区 = 整窗。同时消掉 winit 给无装饰阴影预留的 1px 非客户区（之前顶部 1px 亮线的来源）。
+- **关掉 DWM 非客户区渲染**：首帧 `DwmSetWindowAttribute(DWMWA_NCRENDERING_POLICY, DWMNCRP_DISABLED)` + `RedrawWindow(RDW_FRAME)`，清掉 DWM 在窗口创建阶段缓存的装饰帧。
 - **隐藏用 DWM cloak**（`DWMWA_CLOAK`）而不是 `ShowWindow`：后者重新显示后会在顶部留 1px 白色条带；隐藏时把前台窗口还给唤出前的窗口。
-- **顶部 1px 亮线**：winit 无装饰窗口的客户区原点比窗口低 1px（实测 `window=(920,340)`、`client=(920,341)`），透明窗口会露出这条非客户区。修复：首帧 `SetWindowSubclass` 接管 `WM_NCCALCSIZE`，让客户区铺满整窗；DPI 变化、cloak 显隐后仍有效。
+- **置顶不走 winit**：`ViewportCommand::WindowLevel` 会触发 winit 的 window-flags diff、重写整套样式；改为 `window::set_topmost` 直接 `SetWindowPos(HWND_TOPMOST / HWND_NOTOPMOST)`，不碰样式。
+- **GUI 子系统**：`src/main.rs` 始终 `windows_subsystem = "windows"`（debug 也是）。debug 若走 console 子系统，系统会额外创建一个控制台窗口；它位于置顶面板后面，而面板上下留白是透明的，控制台标题栏会从留白里透出来，看起来就像「窗口装饰闪一下」——这是该现象的主因。
 - **尺寸公式**：窗口 = `theme::window_size(card, expanded)` = `(card.x + 48 + expanded ? (20 + 431) : 0, card.y + 104)`，卡片不小于 460×420。`UI_SCALE = 2/3` 统一缩放。
 - **实测尺寸**：150% 主屏收起 720×920、展开 1171×920；100% 副屏收起 480×613、展开 781×613；跨屏拖动按 DIP 保持视觉尺寸（150% ↔ 100% 均验证）。
 - **混合 DPI**（2560×1600@150% + 2560×1440@100%）：启动、展开、拖动、缩放、跨屏均验证通过。
 
-### 11.3 质量门
+### 11.3 已知缺陷（2026-11-11）
+
+- **偶发标题栏闪烁仍未完全消除**：切到 GUI 子系统后频率明显降低（抓帧脚本从「每次交互必现」变为多数情况 0 帧），但点击置顶、钉住状态下失焦/获焦时偶尔仍会看到一帧窗口标题栏。已排除：窗口样式常量（`GetWindowLongPtr` 始终为无 caption）、DWM 非客户区渲染开关、cloak 显隐。怀疑与 DWM 合成缓存/背后窗口重绘时序有关，需要后续单独排查（可能需要完全自定义非客户区或换窗口呈现方式）。当前接受为已知缺陷。
+- **调试输出**：GUI 子系统下 debug 的 stdout/stderr 不再出现在控制台；验证脚本仍可用 `-RedirectStandardError` 抓取。
+
+### 11.4 质量门
 
 `cargo build` 与 `cargo clippy --all-targets` 均 0 warning，`cargo fmt --check` 通过。验证脚本与截图放在 `.tmp/`（未入库）。
 
-### 11.4 未实现
+### 11.5 未实现
 
 真实剪贴板监听、搜索过滤、键盘导航、SQLite 持久化、托盘、开机自启、自动粘贴（均属后续里程碑）。

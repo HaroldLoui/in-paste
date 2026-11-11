@@ -105,6 +105,8 @@ M1 起按实机观感调整了布局与窗口策略，与上文（M0 阶段的�
 1. **尺寸漂移（+22×+56/次）**：`decorations(true)` 时 winit 在 visible / 尺寸等 flag 变化后会按「有装饰」重贴 `WS_CAPTION` 等样式，而每帧剥样式没有补偿客户区 → 客户区变大 → 卡片自适应把窗口再撑大 → 死循环。改为 `with_decorations(false)` 创建。
 2. **顶部 1px 亮线**：winit 无装饰窗口的客户区原点比窗口低 1px（实测 `window=(920,340)` / `client=(920,341)`），透明窗口下露成一条亮线；换 DWM 边框色、cloak 隐藏都只是绕开表象（用红色 clear_color 验证过第 0 行不由 egui 绘制）。修复：首帧 `SetWindowSubclass` 接管 `WM_NCCALCSIZE`，wParam=TRUE 时直接返回 0，让客户区 = 整窗。DPI 变化与 cloak 往返后仍有效（顶部第 0 行像素由 `#D0DEEC` 变为桌面底色）。
 3. **隐藏方式**：`ViewportCommand::Visible(false)` 走 `ShowWindow`，重新显示后顶部会留 1px 条带；改用 DWM cloak（`DWMWA_CLOAK`），并按需把前台还给唤出前的窗口。
+4. **样式拉锯收尾（2026-11-11 晚）**：winit 的样式重写无法靠「每帧剥掉」彻底解决，改为首帧子类化后在 `WM_STYLECHANGING` 里过滤即将写入的装饰位（并把 `WS_EX_TOOLWINDOW` 固定、清 `WS_EX_APPWINDOW`）；同时关掉 DWM 非客户区渲染并 `RedrawWindow` 清缓存帧。置顶不再发 `ViewportCommand::WindowLevel`（它同样会触发整写样式），改为直接 `SetWindowPos(HWND_TOPMOST / HWND_NOTOPMOST)`。
+5. **“标题栏闪烁”主因是控制台窗口（2026-11-11 晚修正）**：抓帧 + 窗口枚举确认，闪的那条标题栏属于 **debug 构建的控制台窗口**（`class=CASCADIA_HOSTING_WINDOW_CLASS`，标题是 exe 路径），它被置顶面板挡住大半，只从面板的**透明留白**里透出来；焦点切换时控制台标题栏在激活/非激活配色间切换，看起来像我们的窗口装饰闪了一下。用 `-WindowStyle Hidden/Minimized` 消掉控制台后闪帧为 0。修复：`src/main.rs` 始终 `windows_subsystem = "windows"`（debug 也是），不再创建控制台窗口。
 
 ### 7.3 拖动与缩放
 
@@ -117,4 +119,9 @@ M1 起按实机观感调整了布局与窗口策略，与上文（M0 阶段的�
 - 150% 主屏：启动 720×920；选中 1171×920；复制后 cloak 隐藏；热键唤回 720×920；失焦隐藏；置顶后失焦保持；关自动隐藏后失焦保持。
 - 缩放：东边 +80 → 797×920；北边外拉 → 高度增加、位置同步；右下角内收 → 尺寸按位移减少；最小尺寸生效。
 - 100% 副屏：收起 480×613、展开 781×613；cloak 往返与顶部均无亮线。
+- 抓帧验证：GUI 子系统构建下，pin 点击 / 失焦 / 获焦 / 设置页来回均为 0 闪帧（修复前同一脚本稳定抓出 4–6 帧）。
 - 质量门：`cargo build` / `clippy --all-targets` 0 warning，`fmt --check` 通过。
+
+### 7.5 已知缺陷（2026-11-11）
+
+- **偶发标题栏闪烁仍未完全消除**：切到 GUI 子系统后频率大幅降低，但点击置顶、钉住状态失焦/获焦时偶尔仍会看到一帧标题栏。已排除窗口样式（`GetWindowLongPtr` 始终无 caption）、DWM 非客区渲染开关、cloak 显隐；怀疑是 DWM 合成缓存或背后窗口重绘时序导致，需要后续单独排查（可能涉及完全自定义非客户区或换呈现方式）。当前接受为已知缺陷。

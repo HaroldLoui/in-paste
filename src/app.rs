@@ -241,6 +241,19 @@ impl UiApp {
         window::set_topmost(frame, self.pinned);
     }
 
+    /// 滚动到让第 `index` 行完整落在列表可视区内。
+    fn ensure_visible(&mut self, card: Rect, index: usize) {
+        let list_rect = list::list_rect(card);
+        let row_rect = row::rect(card.translate(vec2(0.0, -self.scroll)), index);
+        if row_rect.top() < list_rect.top() {
+            self.scroll -= list_rect.top() - row_rect.top();
+        } else if row_rect.bottom() > list_rect.bottom() {
+            self.scroll += row_rect.bottom() - list_rect.bottom();
+        }
+        let max = list::max_scroll(card, self.visible().len());
+        self.scroll = self.scroll.clamp(0.0, max);
+    }
+
     /// 用鼠标屏幕绝对坐标驱动缩放：被拖的边跟着光标走，对边保持不动。
     fn update_resize(&mut self, ctx: &Context, down: bool) {
         let Some(r) = self.resize else {
@@ -392,6 +405,75 @@ impl eframe::App for UiApp {
                     self.pinned,
                     pointer,
                 ));
+            }
+        }
+
+        // ---------- 键盘 ----------
+        if self.view == View::List {
+            let up = ctx.input(|i| i.key_pressed(Key::ArrowUp));
+            let down = ctx.input(|i| i.key_pressed(Key::ArrowDown));
+            if up || down {
+                let len = visible.len();
+                if len > 0 {
+                    self.selected = Some(match (self.selected, down) {
+                        (Some(i), true) => (i + 1).min(len - 1),
+                        (Some(i), false) => i.saturating_sub(1),
+                        (None, true) => 0,
+                        (None, false) => len - 1,
+                    });
+                    if let Some(index) = self.selected {
+                        self.ensure_visible(card, index);
+                    }
+                }
+            }
+
+            if ctx.input(|i| i.key_pressed(Key::Enter))
+                && let Some(sel) = self.selected
+                && let Some(&real) = visible.get(sel)
+            {
+                ctx.copy_text(self.items[real].title.to_owned());
+                self.hide(&ctx, frame);
+            }
+
+            // Ctrl + 1..9：复制对应行并关闭，即使当前没有选中。
+            let ctrl_digit = ctx.input(|i| {
+                if !i.modifiers.ctrl {
+                    return None;
+                }
+                [
+                    Key::Num1,
+                    Key::Num2,
+                    Key::Num3,
+                    Key::Num4,
+                    Key::Num5,
+                    Key::Num6,
+                    Key::Num7,
+                    Key::Num8,
+                    Key::Num9,
+                ]
+                .iter()
+                .position(|key| i.key_pressed(*key))
+                .map(|n| n + 1)
+            });
+            if let Some(n) = ctrl_digit
+                && let Some(&real) = visible.get(n - 1)
+            {
+                ctx.copy_text(self.items[real].title.to_owned());
+                self.hide(&ctx, frame);
+            }
+
+            if ctx.input(|i| i.key_pressed(Key::Delete))
+                && let Some(sel) = self.selected
+                && let Some(&real) = visible.get(sel)
+            {
+                self.items.remove(real);
+                let len = self.visible().len();
+                self.selected = if len == 0 {
+                    None
+                } else {
+                    Some(sel.min(len - 1))
+                };
+                self.scroll = self.scroll.min(list::max_scroll(card, len));
             }
         }
 

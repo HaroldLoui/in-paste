@@ -91,6 +91,7 @@ mod platform {
             cy: i32,
             flags: u32,
         ) -> i32;
+        fn SetWindowTextW(hwnd: isize, text: *const u16) -> i32;
     }
 
     #[repr(C)]
@@ -226,6 +227,12 @@ mod platform {
             if tool_ex != ex {
                 SetWindowLongPtrW(hwnd, GWL_EXSTYLE, tool_ex);
             }
+
+            // 清掉窗口标题：DWM 在激活 / 改 z-order 时偶尔会从透明留白里
+            // 把窗口标题文字画出来（看起来就是标题栏闪一下）。窗口是工具窗，
+            // 不需要标题，直接置空后这条残影就不会再出现。
+            let empty = [0u16];
+            SetWindowTextW(hwnd, empty.as_ptr());
 
             // 让新的非客户区计算立刻生效，并清掉 DWM 在创建阶段缓存的装饰帧。
             SetWindowPos(

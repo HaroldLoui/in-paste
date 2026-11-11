@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 
 use eframe::egui::{
     self, Context, CursorIcon, Key, Pos2, Rect, TextureHandle, TextureOptions, Vec2,
-    ViewportCommand, WindowLevel, pos2, vec2,
+    ViewportCommand, pos2, vec2,
 };
 use eframe::{CreationContext, Frame};
 
@@ -89,6 +89,8 @@ pub struct UiApp {
     hidden: bool,
     /// 隐藏前的前台窗口，cloak 隐藏后把焦点还给它（否则前台会留在不可见的窗口上）。
     prev_fg: Option<isize>,
+    /// 首帧是否已经设过窗口置顶（`window::set_topmost` 需要拿到窗口句柄）。
+    topmost_ready: bool,
     was_focused: bool,
     /// 是否已经真正拿到过一次焦点（避免启动首帧被误判为「刚失焦」而立即隐藏）。
     seen_focus: bool,
@@ -109,8 +111,6 @@ impl UiApp {
         // 测试时可用 INPASTE_NO_AUTOHIDE=1 关掉失焦自动隐藏，方便截图/自动化验证。
         let auto_hide = std::env::var_os("INPASTE_NO_AUTOHIDE").is_none();
         let hotkey = Hotkey::install(&cc.egui_ctx);
-        cc.egui_ctx
-            .send_viewport_cmd(ViewportCommand::WindowLevel(WindowLevel::AlwaysOnTop));
 
         Self {
             thumb: load_thumb(&cc.egui_ctx),
@@ -124,6 +124,7 @@ impl UiApp {
             auto_hide,
             hidden: false,
             prev_fg: None,
+            topmost_ready: false,
             was_focused: true,
             seen_focus: false,
             resize: None,
@@ -234,12 +235,10 @@ impl UiApp {
         ctx.request_repaint();
     }
 
-    fn apply_pin(&self, ctx: &Context) {
-        ctx.send_viewport_cmd(ViewportCommand::WindowLevel(if self.pinned {
-            WindowLevel::AlwaysOnTop
-        } else {
-            WindowLevel::Normal
-        }));
+    /// 置顶开关：直接改窗口 z-order，避免 winit 的 `set_window_level`
+    /// （它会重写整套装饰样式，导致标题栏闪一下）。
+    fn apply_pin(&self, frame: &Frame) {
+        window::set_topmost(frame, self.pinned);
     }
 
     /// 用鼠标屏幕绝对坐标驱动缩放：被拖的边跟着光标走，对边保持不动。
@@ -302,8 +301,13 @@ impl eframe::App for UiApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut Frame) {
         let ctx = ui.ctx().clone();
-        if window::strip_system_frame(frame) {
+        // 首帧：装窗口子类化（接管非客户区），并把窗口置顶一次。
+        if window::init_window(frame) {
             ctx.request_repaint();
+        }
+        if !self.topmost_ready {
+            window::set_topmost(frame, true);
+            self.topmost_ready = true;
         }
 
         let screen = ctx.input(|i| i.content_rect());
@@ -408,7 +412,7 @@ impl eframe::App for UiApp {
                         handled = true;
                     } else if hits.pin.contains(pos) {
                         self.pinned = !self.pinned;
-                        self.apply_pin(&ctx);
+                        self.apply_pin(frame);
                         handled = true;
                     } else if let Some(tab) = hits.tab_at(pos) {
                         self.tab = tab;
@@ -428,7 +432,7 @@ impl eframe::App for UiApp {
                         self.auto_hide = !self.auto_hide;
                     } else if hits.pinned.contains(pos) {
                         self.pinned = !self.pinned;
-                        self.apply_pin(&ctx);
+                        self.apply_pin(frame);
                     } else if hits.exit.contains(pos) {
                         ctx.send_viewport_cmd(ViewportCommand::Close);
                     }

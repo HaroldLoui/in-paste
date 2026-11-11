@@ -13,6 +13,17 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// 用于搜索匹配的类型名。
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Text => "文本",
+            Self::Image => "图片",
+            Self::Link => "链接",
+            Self::Pdf => "PDF",
+            Self::Rich => "富文本",
+        }
+    }
+
     /// 该类型是否属于第 `tab` 个分类（0 = 全部）。
     pub fn matches_tab(self, tab: usize) -> bool {
         match tab {
@@ -35,6 +46,17 @@ pub struct Item {
 }
 
 impl Item {
+    /// 是否命中搜索词（`query` 已转小写并去除首尾空白）。
+    pub fn matches_query(&self, query: &str) -> bool {
+        if query.is_empty() {
+            return true;
+        }
+        let body = self.preview_body();
+        self.title.to_lowercase().contains(query)
+            || self.kind.label().to_lowercase().contains(query)
+            || body.iter().any(|line| line.to_lowercase().contains(query))
+    }
+
     /// 预览卡头部的两行标题，第二行可为空。
     pub fn preview_title(&self) -> [&'static str; 2] {
         match self.kind {

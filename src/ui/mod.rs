@@ -5,6 +5,7 @@
 pub mod list;
 pub mod preview;
 pub mod row;
+pub mod search;
 pub mod settings;
 pub mod toolbar;
 

@@ -15,7 +15,7 @@ use crate::hotkey::{self, Hotkey};
 use crate::model::{self, Item};
 use crate::theme::{self, MARGIN_BOTTOM, MARGIN_TOP, MARGIN_X, MIN_CARD_H, MIN_CARD_W, UI_SCALE};
 use crate::ui::{self, list, preview, row, settings, toolbar};
-use crate::{fonts, window};
+use crate::{fonts, tray, window};
 
 /// 主卡显示列表还是设置页。
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -80,6 +80,7 @@ pub struct UiApp {
     tab: usize,
     view: View,
     scroll: f32,
+    query: String,
     /// 卡片尺寸（设计点），窗口尺寸 = `theme::window_size(card, expanded)`。
     card: Vec2,
     /// 窗口置顶（钉住）：开启后失焦不隐藏。
@@ -100,6 +101,7 @@ pub struct UiApp {
     /// 已发出但窗口尚未跟上的目标尺寸。
     target: Option<Vec2>,
     _hotkey: Option<Hotkey>,
+    _tray: Option<tray::Tray>,
 }
 
 impl UiApp {
@@ -119,6 +121,7 @@ impl UiApp {
             tab: 0,
             view: View::List,
             scroll: 0.0,
+            query: String::new(),
             card: vec2(theme::DEFAULT_CARD_W, theme::DEFAULT_CARD_H),
             pinned: false,
             auto_hide,
@@ -132,6 +135,7 @@ impl UiApp {
             drag_fired: false,
             target: None,
             _hotkey: hotkey,
+            _tray: tray::install(&cc.egui_ctx),
         }
     }
 
@@ -141,8 +145,10 @@ impl UiApp {
 
     /// 当前分类过滤 + 置顶优先排序后的真实下标。
     fn visible(&self) -> Vec<usize> {
+        let query = self.query.trim().to_lowercase();
         let mut visible: Vec<usize> = (0..self.items.len())
             .filter(|&i| self.items[i].kind.matches_tab(self.tab))
+            .filter(|&i| self.items[i].matches_query(&query))
             .collect();
         visible.sort_by_key(|&i| !self.items[i].pinned);
         visible
@@ -220,6 +226,7 @@ impl UiApp {
         self.view = View::List;
         self.selected = None;
         self.scroll = 0.0;
+        self.query.clear();
         // 等焦点真正回来再置 true；否则首帧 focused 仍为 false 会被误判成「刚失焦」而立刻隐藏。
         self.was_focused = false;
         // 记下唤出前的前台窗口，隐藏时还给它。
@@ -310,6 +317,29 @@ impl eframe::App for UiApp {
                 self.hide(ctx, frame);
             }
         }
+
+        if let Some(action) = tray::take_action() {
+            match action {
+                tray::Action::Toggle => {
+                    if self.hidden {
+                        self.show(ctx, frame);
+                    } else {
+                        self.hide(ctx, frame);
+                    }
+                }
+                tray::Action::Settings => {
+                    if self.hidden {
+                        self.show(ctx, frame);
+                    }
+                    self.view = View::Settings;
+                    self.selected = None;
+                    self.query.clear();
+                }
+                tray::Action::Quit => {
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+            }
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut Frame) {
@@ -331,8 +361,8 @@ impl eframe::App for UiApp {
         }
 
         let card = Rect::from_min_size(screen.min + vec2(MARGIN_X, MARGIN_TOP), self.card);
-        let p = ui.painter();
-        ui::draw_card(p, card, theme::CARD_R, theme::CARD_BG);
+        let p = ui.painter().clone();
+        ui::draw_card(&p, card, theme::CARD_R, theme::CARD_BG);
 
         let pointer = ctx.input(|i| i.pointer.latest_pos());
         let pressed = ctx.input(|i| i.pointer.primary_pressed());
@@ -350,18 +380,38 @@ impl eframe::App for UiApp {
         let mut list_out: Option<list::Output> = None;
         let mut preview_area: Option<Rect> = None;
 
-        let mut visible = self.visible();
-        if let Some(sel) = self.selected
-            && sel >= visible.len()
-        {
-            self.selected = None;
+        let mut visible: Vec<usize> = Vec::new();
+
+        // Ctrl+F：从任何页面回到列表并聚焦搜索框。
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(Key::F)) {
+            self.view = View::List;
+            ctx.memory_mut(|m| m.request_focus(ui::search::id()));
         }
 
         match self.view {
             View::List => {
-                toolbar_hits = Some(toolbar::draw(p, card, self.tab, self.pinned, pointer));
+                toolbar_hits = Some(toolbar::draw(&p, card, self.tab, self.pinned, pointer));
+                if let Some(hits) = &toolbar_hits {
+                    let response = ui::search::draw(ui, hits.search, &mut self.query);
+                    if response.changed() {
+                        self.selected = None;
+                        self.scroll = 0.0;
+                    }
+                }
+                if let Some(sel) = self.selected
+                    && sel >= visible.len()
+                {
+                    self.selected = None;
+                }
+                visible = self.visible();
+                if let Some(sel) = self.selected
+                    && sel >= visible.len()
+                {
+                    self.selected = None;
+                }
+
                 list_out = Some(list::draw(
-                    p,
+                    &p,
                     card,
                     &list::Input {
                         items: &self.items,
@@ -389,7 +439,7 @@ impl eframe::App for UiApp {
                     );
                     preview_area = Some(preview_rect);
                     preview::draw(
-                        p,
+                        &p,
                         preview_rect,
                         &self.items[real],
                         arrow_y,
@@ -399,7 +449,7 @@ impl eframe::App for UiApp {
             }
             View::Settings => {
                 settings_hits = Some(settings::draw(
-                    p,
+                    &p,
                     card,
                     self.auto_hide,
                     self.pinned,
@@ -501,6 +551,9 @@ impl eframe::App for UiApp {
                         self.selected = None;
                         self.scroll = 0.0;
                         handled = true;
+                    } else if hits.search.contains(pos) {
+                        ctx.memory_mut(|m| m.request_focus(ui::search::id()));
+                        handled = true;
                     } else if hits.is_drag(pos) {
                         self.drag_from = Some(pos);
                         self.drag_fired = false;
@@ -573,7 +626,13 @@ impl eframe::App for UiApp {
             match self.view {
                 View::Settings => self.view = View::List,
                 View::List => {
-                    if self.selected.take().is_none() {
+                    let search_focused = ctx.memory(|m| m.has_focus(ui::search::id()));
+                    if search_focused || !self.query.is_empty() {
+                        self.query.clear();
+                        ctx.memory_mut(|m| m.surrender_focus(ui::search::id()));
+                        self.selected = None;
+                        self.scroll = 0.0;
+                    } else if self.selected.take().is_none() {
                         self.hide(&ctx, frame);
                     }
                 }

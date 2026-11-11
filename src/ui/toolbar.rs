@@ -3,12 +3,10 @@
 //! 两行布局让窄卡片也有足够的图标间距；第二行右侧留白同时充当
 //! 「拖动窗口」的抓取区。
 
-use eframe::egui::{
-    Align2, Color32, CornerRadius, FontFamily, FontId, Painter, Pos2, Rect, pos2, vec2,
-};
+use eframe::egui::{Color32, CornerRadius, Painter, Pos2, Rect, pos2, vec2};
 
 use crate::icons;
-use crate::theme::{ACCENT, CARD_BG, NAVY, PILL, PLACEHOLDER, SEARCH_BG, TILE_NORMAL};
+use crate::theme::{ACCENT, CARD_BG, NAVY, PILL, SEARCH_BG, TILE_NORMAL};
 
 use crate::ui::rr;
 
@@ -23,6 +21,7 @@ const SETTINGS_INSET: f32 = 43.0;
 
 /// 各个可点击/可拖动区域。
 pub struct Hits {
+    pub search: Rect,
     pub tabs: [Rect; 5],
     pub pin: Rect,
     pub settings: Rect,
@@ -59,14 +58,6 @@ pub fn draw(p: &Painter, card: Rect, tab: usize, pinned: bool, pointer: Option<P
         '\u{E721}',
         Color32::from_rgb(0x5E, 0x64, 0x80),
     );
-    p.text(
-        pos2(search.left() + 53.0, search.center().y),
-        Align2::LEFT_CENTER,
-        "搜索剪贴板...",
-        FontId::new(17.0, FontFamily::Proportional),
-        PLACEHOLDER,
-    );
-
     // 第二行：分类图标
     let mut tabs = [Rect::NOTHING; 5];
     for (i, rect) in tabs.iter_mut().enumerate() {
@@ -132,6 +123,7 @@ pub fn draw(p: &Painter, card: Rect, tab: usize, pinned: bool, pointer: Option<P
     ];
 
     Hits {
+        search,
         tabs,
         pin,
         settings,

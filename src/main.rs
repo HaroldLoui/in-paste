@@ -12,6 +12,7 @@ mod hotkey;
 mod icons;
 mod model;
 mod theme;
+mod tray;
 mod ui;
 mod window;
 

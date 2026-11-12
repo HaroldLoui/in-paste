@@ -2,7 +2,7 @@
 
 > 状态：**gpui-kit 重写进行中**（2026-11-12，分支 `feat/gpui-rewrite`）；原 egui 实现见 git 历史与 [`REVIEW.md`](REVIEW.md)  
 > 基线需求：[`ui.md`](../ui.md)、设计稿 [`ui.png`](../ui.png)  
-> 阶段 0 spike 已通过（7/7，见 `spike/README.md`）；当前进入阶段 1 正式重写。
+> 阶段 0 spike 已通过（7/7，结论见 [`REVIEW.md`](REVIEW.md) §8.2）；当前进入阶段 1 正式重写。
 
 > 注：§1、§8 是 v1 计划原文，交互相关的「Ctrl+N 胶囊 / 预览底部按钮 / 关闭按钮」已在 2026-11-11 按外部反馈调整，以 §11 为准。**Ctrl+数字 快捷键已决定不做**（2026-11-12）。
 
@@ -40,7 +40,7 @@
 - 热键 / 托盘：`global-hotkey` / `tray-icon`（与 egui 版相同），后台线程写原子标记，50ms 轮询任务处理。
 - 架构切分：`core`（纯逻辑）/ `platform`（Win32+热键+托盘）/ `theme`（token）/ `ui`（视图）。
 
-**阶段 0 spike 已验证**（`spike/README.md`）：无残影、IME 正常、cloak/置顶/hwnd 可用、白底无灰晕。
+**阶段 0 spike 已验证**（[`REVIEW.md`](REVIEW.md) §8.2）：无残影、IME 正常、cloak/置顶/hwnd 可用、白底无灰晕。
 
 ## 4. 设计 Token
 

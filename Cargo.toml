@@ -1,16 +1,24 @@
 [package]
 name = "in-paste"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
-eframe = { version = "0.37", default-features = false, features = ["glow", "clipboard"] }
-egui = "0.37"
+gpui-kit = "=0.9.1"
 global-hotkey = "0.9"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 raw-window-handle = "0.6"
 tray-icon = "0.26.1"
 
 [profile.release]
 opt-level = 3
 lto = "thin"
+
+[profile.dev.package]
+gpui-pre = { opt-level = 3 }
+gpui-component = { opt-level = 3 }
+gpui-kit = { opt-level = 3 }
+gpui-kit-assets = { opt-level = 3 }
+gpui-pre-platform = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+taffy = { opt-level = 3 }
+ttf-parser = { opt-level = 3 }

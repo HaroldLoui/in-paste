@@ -1,25 +1,85 @@
-// 剪贴板管理器 UI 原型（egui 0.37）
-// 初始只显示主卡；点击某行后窗口向右展开，并在右侧显示该行预览。
-//
-// 始终用 GUI 子系统：debug 构建如果走 console 子系统，会额外出现一个控制台窗口，
-// 它位于置顶面板后面；面板留白是透明的，控制台标题栏会从那条留白里透出来，
-// 焦点切换时看起来就像「窗口装饰闪一下」。
+//! in-paste —— Windows 呼出式剪贴板管理器（gpui-kit 重写版）。
+//!
+//! 架构：
+//! - `core`     纯逻辑（记录模型 / 过滤）
+//! - `platform` 平台壳（Win32 / 热键 / 托盘）
+//! - `theme`    设计 token（调样式只动这里）
+//! - `ui`       gpui-kit 视图
 #![windows_subsystem = "windows"]
 
-mod app;
-mod fonts;
-mod hotkey;
-mod icons;
-mod model;
+mod core;
+mod platform;
 mod theme;
-mod tray;
 mod ui;
-mod window;
 
-fn main() -> eframe::Result {
-    eframe::run_native(
-        "in-paste",
-        window::native_options(),
-        Box::new(|cc| Ok(Box::new(app::UiApp::new(cc)))),
-    )
+use std::borrow::Cow;
+
+use gpui_kit::component::theme::Theme;
+use gpui_kit::*;
+
+fn main() {
+    application().run(|cx| {
+        init(cx);
+        ui::app::bind_keys(cx);
+
+        register_fonts(cx);
+        Theme::update(cx, |theme| {
+            theme.font_family = "Microsoft YaHei".into();
+            theme.mono_font_family = "Consolas".into();
+            theme.font_size = px(16.);
+            // gpui-component RootPlugin 会给根表面刷不透明主题底色，
+            // 盖住透明窗口留白 → 置为透明。
+            let clear = theme.transparent;
+            theme.background = clear;
+            theme.tokens.background = clear.into();
+        });
+
+        let opts = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                None,
+                size(px(720.), px(920.)),
+                cx,
+            ))),
+            titlebar: Some(TitlebarOptions {
+                title: Some("in-paste".into()),
+                appears_transparent: true,
+                traffic_light_position: None,
+            }),
+            window_background: WindowBackgroundAppearance::Transparent,
+            focus: true,
+            show: true,
+            is_movable: true,
+            is_resizable: false,
+            is_minimizable: false,
+            window_min_size: Some(size(px(508.), px(484.))),
+            ..Default::default()
+        };
+
+        open_window(opts, cx, |window, cx| {
+            window.set_window_title("in-paste");
+            let view = cx.new(|cx| ui::app::UiApp::new(window, cx));
+            ui::app::wire_actions(&view, cx);
+            ui::app::spawn_poll(&view, cx);
+            view
+        })
+        .expect("failed to open window");
+
+        eprintln!("[in-paste] gpui rewrite started");
+    });
+}
+
+/// 加载系统 CJK 字体；失败不致命（DirectWrite 仍可解析已装字体）。
+fn register_fonts(cx: &mut App) {
+    let candidates: [&[u8]; 2] = [
+        include_bytes!("C:/Windows/Fonts/msyh.ttc"),
+        include_bytes!("C:/Windows/Fonts/segoeui.ttf"),
+    ];
+    for bytes in candidates {
+        let _ = cx.text_system().add_fonts(vec![Cow::Borrowed(bytes)]);
+    }
+    let families = cx.text_system().all_font_names();
+    let has_yahei = families
+        .iter()
+        .any(|f| f.contains("YaHei") || f.contains("微软雅黑"));
+    eprintln!("[in-paste] YaHei visible={has_yahei}");
 }

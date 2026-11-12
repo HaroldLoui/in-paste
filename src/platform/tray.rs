@@ -1,11 +1,9 @@
-//! 系统托盘：左键显示/隐藏面板，右键菜单提供设置与退出。
+//! 系统托盘：左键显示/隐藏，右键菜单设置与退出。
 //!
-//! 菜单和托盘事件由两个后台线程阻塞接收，只写一个原子标记并 `request_repaint`，
-//! 真正的动作统一在 `App::logic` 里处理，避免跨线程碰窗口状态。
+//! 事件由后台线程写入原子标记，主循环轮询后处理。
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use eframe::egui::Context;
 use tray_icon::{
     Icon, TrayIcon, TrayIconBuilder, TrayIconEvent,
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
@@ -38,12 +36,12 @@ pub fn take_action() -> Option<Action> {
     }
 }
 
-/// 持有 `TrayIcon`，drop 时自动移除托盘图标。
+/// 持有 `TrayIcon`，drop 时自动移除。
 pub struct Tray {
     _icon: TrayIcon,
 }
 
-pub fn install(ctx: &Context) -> Option<Tray> {
+pub fn install() -> Option<Tray> {
     let menu = Menu::new();
     let toggle = MenuItem::with_id("toggle", "显示 / 隐藏面板", true, None);
     let settings = MenuItem::with_id("settings", "设置", true, None);
@@ -60,7 +58,6 @@ pub fn install(ctx: &Context) -> Option<Tray> {
         .build()
         .ok()?;
 
-    let menu_ctx = ctx.clone();
     std::thread::spawn(move || {
         while let Ok(event) = MenuEvent::receiver().recv() {
             match event.id().as_ref() {
@@ -69,11 +66,9 @@ pub fn install(ctx: &Context) -> Option<Tray> {
                 "quit" => post(Action::Quit),
                 _ => continue,
             }
-            menu_ctx.request_repaint();
         }
     });
 
-    let tray_ctx = ctx.clone();
     std::thread::spawn(move || {
         while let Ok(event) = TrayIconEvent::receiver().recv() {
             if let TrayIconEvent::Click {
@@ -83,7 +78,6 @@ pub fn install(ctx: &Context) -> Option<Tray> {
             } = event
             {
                 post(Action::Toggle);
-                tray_ctx.request_repaint();
             }
         }
     });
@@ -111,7 +105,6 @@ fn make_icon() -> Option<Icon> {
             }
         }
     }
-    // 纸张
     for y in 9..26 {
         for x in 10..23 {
             if in_round_rect(x, y, 10, 9, 22, 25, 2) {
@@ -119,7 +112,6 @@ fn make_icon() -> Option<Icon> {
             }
         }
     }
-    // 顶部夹子
     for y in 6..9 {
         for x in 13..20 {
             if in_round_rect(x, y, 13, 6, 19, 8, 1) {
@@ -127,7 +119,6 @@ fn make_icon() -> Option<Icon> {
             }
         }
     }
-    // 内容线
     for (y, w) in [(13i32, 7usize), (17, 7), (21, 5)] {
         for x in 13..13 + w as i32 {
             pixel(x as usize, y as usize, blue);

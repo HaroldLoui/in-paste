@@ -1,73 +1,50 @@
 # in-paste 开发计划（v1）
 
-> 状态：已评审（2026-11-09），M0 技术验证通过；UI 原型已迭代到「交互重构」版本，现状见 §11 与 [`REVIEW.md`](REVIEW.md) §7  
+> 状态：**gpui-kit 重写进行中**（2026-11-12，分支 `feat/gpui-rewrite`）；原 egui 实现见 git 历史与 [`REVIEW.md`](REVIEW.md)  
 > 基线需求：[`ui.md`](../ui.md)、设计稿 [`ui.png`](../ui.png)  
-> 本期目标：**只做 UI 原型**（mock 数据），不做真实剪贴板监听、持久化、全局热键、托盘。
+> 阶段 0 spike 已通过（7/7，见 `spike/README.md`）；当前进入阶段 1 正式重写。
 
-> 注：§1、§8 是 v1 计划原文，交互相关的「Ctrl+N 胶囊 / 预览底部按钮 / 关闭按钮」已在 2026-11-11 按外部反馈调整，以 §11 为准。
+> 注：§1、§8 是 v1 计划原文，交互相关的「Ctrl+N 胶囊 / 预览底部按钮 / 关闭按钮」已在 2026-11-11 按外部反馈调整，以 §11 为准。**Ctrl+数字 快捷键已决定不做**（2026-11-12）。
 
 ## 1. 产品与范围
 
 轻量级、呼出式的 Windows 剪贴板管理器（Raycast 风格），不是完整管理窗口：
 
-- 无边框圆角浮窗，**设计坐标 720 × 920**（主卡 672 × 816），再按 `UI_SCALE = 2/3` 统一缩放到实际像素显示（150% DPI 下窗口为 720×920 物理像素）。
-- 工具栏分**两行**：第一行搜索胶囊 + 窗口置顶 + 关闭；第二行五个分类图标 tab（全部 / 文本 / 图片 / 文件 / 链接）+ 选中下划线。
-- 中部列表：类型图标块 + 单行截断摘要 + 相对时间 + 右侧 `Ctrl + N` 提示胶囊；选中行淡蓝高亮。
-- 右侧**独立预览浮层**（不是固定面板）：选中记录时出现，圆角、阴影、左缘三角指向选中行，含头部/正文/底部按钮（复制 / 置顶 / 删除）。
+- 无边框圆角浮窗，**设计坐标 720 × 920**（主卡 672 × 816）。
+- 工具栏分**两行**：第一行搜索胶囊；第二行五个分类图标 tab（全部 / 文本 / 图片 / 文件 / 链接）+ 置顶 / 设置 + 选中下划线。
+- 中部列表：类型图标块 + 单行截断摘要 + 相对时间；选中行淡蓝高亮，行内出现复制 / 置顶 / 删除按钮。
+- 选中记录时窗口向右横向扩展，同窗透明区绘制右侧预览卡。
 
-本期不做（后续里程碑另议）：真实剪贴板监听、SQLite 持久化、全局热键、托盘、开机自启、自动粘贴、云同步。
+本期不做（后续里程碑另议）：真实剪贴板监听、SQLite 持久化、开机自启、自动粘贴、云同步。全局热键与托盘已在重写版中实现。
 
 ## 2. 已确认的决策
 
 | # | 事项 | 结论 |
 |---|---|---|
-| 1 | `ui.md` 中 "Windows Reactor" 关键词 | 仅作为 **Win11 风格参考**，实现框架仍为 egui |
-| 2 | 预览触发方式 | **选中才预览**（点击 / 键盘切换都改变选中）；hover 只做行底色微变，不弹预览 |
-| 3 | 列表类型图标块尺寸 | 首版取 **56 × 56**（ui.md 建议值），后续按实际观感再调 |
-| 4 | 半透明 / 磨砂玻璃 | **不做**。主窗与浮层均为不透明浅色卡片；"透明"只用于圆角外沿与窗体外阴影 |
-| 5 | 预览浮层 | 设计意图为**独立顶层窗口**（位于主窗矩形之外）；v0.1 实现改为单窗口横向扩展（`ViewportCommand::InnerSize` + 同窗透明区绘制），视觉等价，见 §11 |
-| 6 | 复制语义 | 复制按钮与 Enter 一致：**复制 + 关闭主窗**；置顶 / 删除不关闭、不改变主窗布局 |
-| 7 | `Ctrl + 数字` | 复制该条并关闭（不是仅选中）；胶囊按当前过滤结果的前 9 条编号 |
-| 8 | 两个"置顶" | `window_pinned`（工具栏，窗口 always-on-top）与 `item_pinned`（预览底部，记录置顶）分开实现 |
+| 1 | 实现框架 | **gpui-kit 0.9.1**（2026-11-12 起；原 egui 0.37 见 git 历史） |
+| 2 | 预览触发方式 | **选中才预览**（点击 / 键盘切换都改变选中）；hover 只做行底色微变 |
+| 3 | 半透明 / 磨砂玻璃 | **不做**。主窗透明留白 + 不透明浅色卡片 |
+| 4 | 预览浮层 | 单窗口横向扩展（窗口 resize），同窗透明区绘制 |
+| 5 | 复制语义 | 复制按钮与 Enter 一致：**复制 + 隐藏面板** |
+| 6 | `Ctrl + 数字` | **不做**（2026-11-12 决定） |
+| 7 | 两个"置顶" | 工具栏置顶 = 窗口 always-on-top + 失焦不隐藏；记录置顶只影响排序 |
+| 8 | 卡片阴影 / 描边 | **去掉**（2026-11-12 反馈：只要列表主体，白底不留灰晕） |
 
-## 3. 技术栈与 M0 决策门
+## 3. 技术栈（gpui-kit 重写版）
 
-- GUI：**egui / eframe 0.37**，glow 后端。0.37 的 App trait 是 Ui-first：`fn ui(&mut self, ui: &mut egui::Ui, frame: &mut Frame)`，旧 `update(ctx, frame)` 已不存在。
-- 预览浮层：eframe **第二个 viewport**（无边框 + 透明 + 自绘）。
-- 图标：**手绘矢量**（`painter` 绘制），不引入图标字体，保证任意 DPI 清晰。
-- 字体：系统字体。egui 默认不含 CJK，必须运行时加载 `C:\Windows\Fonts\msyh.ttc`（回退 `msyh.ttf` / `simhei.ttf`），并配 Segoe UI 作为拉丁字形回退。`default_fonts` 关闭后 `FontDefinitions` 为空，必须 `ctx.set_fonts()`。
-- 复制：egui 自带 `ctx.copy_text`；eframe features 必须含 `clipboard`，否则 egui-winit 只写进程内 fallback，系统剪贴板不更新。
-- 图片：`image` crate 解码后 `ctx.load_texture`。
+- GUI：**gpui-kit 0.9.1**（内置 gpui-pre 0.3.12 + gpui-component + assets）。
+- 窗口：GPUI 原生 Win32 后端（不经过 winit）；`platform/windows.rs` 负责 hwnd 加固（剥 caption / WS_EX_TOOLWINDOW / 清标题 / 关 DWM NC）、cloak、置顶、拖动。
+- 透明：`WindowBackgroundAppearance::Transparent` + 主题根背景置透明（gpui-component RootPlugin 默认刷不透明底色，必须覆盖）。
+- 图标：`gpui_kit::assets::IconName`（Lucide 全量）+ 少量几何自绘（grid / T）。
+- 字体：`TextSystem::add_fonts` 加载 msyh.ttc / segoeui.ttf，主题 `font_family = Microsoft YaHei`。
+- 热键 / 托盘：`global-hotkey` / `tray-icon`（与 egui 版相同），后台线程写原子标记，50ms 轮询任务处理。
+- 架构切分：`core`（纯逻辑）/ `platform`（Win32+热键+托盘）/ `theme`（token）/ `ui`（视图）。
 
-**M0 是唯一翻盘口**：三个风险点任一不通过，则转 Windows Reactor 方案（M1–M5 的组件与状态划分不变，仅替换渲染层）。
+**阶段 0 spike 已验证**（`spike/README.md`）：无残影、IME 正常、cloak/置顶/hwnd 可用、白底无灰晕。
 
-1. 无边框 + 透明 + 20px 圆角 + 自绘外阴影，在 100% / 125% / 150% DPI 下的观感；
-2. 中文 IME：搜索框内组合输入、候选窗位置、实时过滤；
-3. 第二个 viewport：透明、无边框、贴主窗右侧、跟随选中行、独立阴影、失焦与点击行为。
+## 4. 设计 Token
 
-## 4. 设计 Token（从设计稿取样，首版）
-
-| Token | 值 |
-|---|---|
-| `window.bg` | `#F6F6FD`（落地为不透明近白微紫） |
-| `window.size` | 设计点 720 × 920（主卡 672 × 816）；`UI_SCALE = 2/3` 缩放显示 |
-| `window.radius` | 20 |
-| `window.shadow` | `0 10px 34px rgba(0, 0, 0, 0.10)` + `0 2px 8px rgba(0, 0, 0, 0.06)` |
-| `toolbar.height` | 两行：搜索行 18–76，分类图标行至 146 |
-| `accent` | `#0D6BFC` |
-| `text.primary` | `#0B0D1A`；正文 `#1F2344`；次要 `#6A7597` |
-| `search.bg / height / radius` | `#E6E7F5` / 58 / 29 |
-| `tab.indicator` | 30 × 3，`#0D6BFC` |
-| `list.top` | 146 |
-| `row.height / radius / selected` | 81（首行 90）/ 14 / `#C6D9FE` |
-| `icon.tile` | 64 × 64，r15；文本块 `#EDEEF9`（选中 `#D9E3FE`），文件块 `#F6E3EA` |
-| `shortcut.pill` | `#E5E7F4`（选中 `#B7CBF5`），110 × 42，r11，20.5px |
-| `preview.width / height / radius / bg / gap` | 431 / 338 / 18 / `#F5F5FD` / 20 |
-| `preview.arrow` | 18 × 40 三角形，尖端距主卡右缘 2px，对齐选中行垂直中心 |
-| `button.primary` | 111 × 50，r14，`#1167FD`，白字 |
-| `divider` | `#E6E7F2` |
-
-> 注：设计稿背景是 mockup 壁纸，取样颜色受其轻微影响；落地时以不透明近似值为准。
+见 `src/theme.rs`（唯一改样式的地方）。核心值与设计稿一致：accent `#0D6BFC`、卡片 `#F6F6FD`、选中 `#C6D9FE`、圆角 20、行高 81（首行 90）、列表起点 146。
 
 ## 5. 里程碑
 

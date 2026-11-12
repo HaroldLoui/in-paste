@@ -127,3 +127,46 @@ M1 起按实机观感调整了布局与窗口策略，与上文（M0 阶段的�
 ### 7.5 已知缺陷（2026-11-11）
 
 - **标题残影（已修复）**：抓帧确认残影只有窗口标题文字（没有标题栏底板），在激活、点击置顶、焦点切换时会出现。窗口始终是工具窗、不需要标题，因此首帧初始化时用 `SetWindowTextW(hwnd, L"")` 清空标题后，激活/置顶/焦点切换均不再出现 `in-paste` 残影（2026-11-11 补丁）。
+
+
+## 8. gpui-kit 重写（2026-11-12）
+
+### 8.1 决策背景
+
+- 标题残影在 egui/winit 路线上反复修补仍存在（§7.5 标"已修复"与实际不符）。
+- 评估 gpui-kit（Longbridge，非 Zed 官方）与 windows-reactor（微软实验品，lib.rs 标 not recommended）。
+- 结论：**推倒重写，分支 `feat/gpui-rewrite`**；windows-reactor 太早且锁死 Windows。
+
+### 8.2 阶段 0 spike（`spike/`，7/7 通过）
+
+| 项 | 结果 |
+|---|---|
+| 标题残影 | GPUI 原生 Win32 + harden 后未复现 |
+| IME / 置顶 / cloak / hwnd | 全部可用 |
+| 样式 | token 可迁移；白底灰晕来自 BoxShadow，按反馈去掉阴影/描边 |
+| CJK 字体 | YaHei 正常 |
+
+新坑（已写入重写代码规避）：
+1. gpui-component RootPlugin 给根表面刷不透明主题底色 → `Theme::update` 置透明；
+2. 卡片 `BoxShadow` 白底显灰 → 按需求去掉，只留卡片本体。
+
+### 8.3 重写架构
+
+```
+src/
+  core/       纯逻辑（model，无 Ctrl+数字）
+  platform/   windows.rs（hwnd/cloak/置顶/拖动）+ hotkey + tray
+  theme.rs    设计 token（唯一改样式处）
+  ui/         app / toolbar / row / preview / settings / icons
+  main.rs     字体 / 主题 / 窗口 / 动作绑定 / 轮询任务
+```
+
+- 质量门：`cargo build` / `clippy --all-targets` / `fmt --check` 全过。
+- 与 egui 版差异：无 Ctrl+数字；无卡片阴影/描边；图标换 Lucide；预览改单窗 resize 展开。
+
+### 8.4 待办（阶段 2+）
+
+- 窗口边缘自定义缩放（旧版 Dir/Resize 逻辑未迁）
+- 拖动热区精细化（当前仅卡片 on_mouse_down 停冒泡，begin_drag 已备）
+- 预览卡左缘箭头
+- 真实剪贴板 / 持久化 / 自启（原 M3–M5）

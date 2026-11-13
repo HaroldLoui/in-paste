@@ -17,7 +17,9 @@ pub const PREVIEW_GAP: f32 = 20.0;
 
 pub const DEFAULT_CARD_W: f32 = 672.0;
 pub const DEFAULT_CARD_H: f32 = 816.0;
-pub const MIN_CARD_W: f32 = 460.0;
+/// 最小卡片宽度：工具栏 5 个 tab(326) + 置顶设置(82) + 左右 padding(60) ≈ 468，
+/// 留一点余量取 500；窗口最小尺寸直接用它。
+pub const MIN_CARD_W: f32 = 500.0;
 pub const MIN_CARD_H: f32 = 420.0;
 
 pub const CARD_R: f32 = 20.0;

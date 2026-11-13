@@ -10,7 +10,7 @@ use gpui_kit::*;
 
 use crate::core::{self, Item};
 use crate::platform::{self, Tray, TrayAction, windows::win};
-use crate::theme::{self, *};
+use crate::theme::*;
 use crate::ui::{drag_zone, preview, row, settings, toolbar};
 
 actions!(in_paste, [MoveUp, MoveDown, Escape, FocusSearch,]);
@@ -56,7 +56,7 @@ impl UiApp {
         })
         .detach();
 
-        Self {
+        let view = Self {
             window: window.window_handle(),
             items: core::initial_items(),
             selected: None,
@@ -70,7 +70,23 @@ impl UiApp {
             pinned: false,
             auto_hide: true,
             _tray: platform::tray::install(),
-        }
+        };
+
+        // 窗口是权威尺寸；卡片跟随 viewport。预览卡暂不参与尺寸推导，
+        // 后续会改成 popover，不在这里耦合。
+        cx.observe_window_bounds(window, |this, window, cx| {
+            let viewport = window.viewport_size();
+            let next_w = f32::from(viewport.width).max(MIN_CARD_W);
+            let next_h = f32::from(viewport.height).max(MIN_CARD_H);
+            if (this.card_w - next_w).abs() > 1.0 || (this.card_h - next_h).abs() > 1.0 {
+                this.card_w = next_w;
+                this.card_h = next_h;
+                cx.notify();
+            }
+        })
+        .detach();
+
+        view
     }
 
     fn expanded(&self) -> bool {
@@ -89,18 +105,6 @@ impl UiApp {
             .collect();
         visible.sort_by_key(|&i| !self.items[i].pinned);
         visible
-    }
-
-    fn window_size(&self) -> (f32, f32) {
-        theme::window_size(self.card_w, self.card_h, self.expanded())
-    }
-
-    fn sync_window(&self, cx: &mut Context<Self>) {
-        let (w, h) = self.window_size();
-        let handle = self.window;
-        let _ = handle.update(cx, |_, window, _| {
-            window.resize(size(px(w), px(h)));
-        });
     }
 
     // ---------------------------------------------------------------- 动作（供 toolbar/row/settings 调用）
@@ -147,8 +151,8 @@ impl UiApp {
         } else {
             Some(pos)
         };
-        // 选中展开预览 → 窗口横向加宽（UI 交互）
-        self.sync_window(cx);
+        // 预览卡暂不参与窗口尺寸（后续会换成 popover），这里只刷新选中态。
+        cx.notify();
     }
 
     /// 行内按钮：UI 阶段只做选中反馈，不写剪贴板、不改数据、不藏面板。
@@ -292,6 +296,7 @@ impl UiApp {
             .id("card")
             .w(px(card_w))
             .h(px(card_h))
+            .flex_shrink_0()
             .flex()
             .flex_col()
             .rounded(px(CARD_R))

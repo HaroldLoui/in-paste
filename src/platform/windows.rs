@@ -153,11 +153,17 @@ pub mod win {
             return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
         }
 
+        forward(hwnd, msg, wparam, lparam)
+    }
+
+    fn forward(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize {
         let old = OLD_WNDPROC.load(Ordering::Relaxed);
-        if old == 0 {
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-        } else {
-            unsafe { CallWindowProcW(old, hwnd, msg, wparam, lparam) }
+        unsafe {
+            if old == 0 {
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            } else {
+                CallWindowProcW(old, hwnd, msg, wparam, lparam)
+            }
         }
     }
 

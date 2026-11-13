@@ -36,7 +36,6 @@ pub struct UiApp {
     /// 工具栏/设置页「置顶」开关；true 时调 win32 topmost（调试用）。
     pinned: bool,
     auto_hide: bool,
-    hardened: bool,
     _tray: Option<Tray>,
 }
 
@@ -70,7 +69,6 @@ impl UiApp {
             card_h: DEFAULT_CARD_H,
             pinned: false,
             auto_hide: true,
-            hardened: false,
             _tray: platform::tray::install(),
         }
     }
@@ -401,13 +399,7 @@ impl UiApp {
 }
 
 impl Render for UiApp {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // 窗口视觉加固（剥 caption / 工具窗），非业务行为
-        if !self.hardened && win::harden(window).is_some() {
-            self.hardened = true;
-            eprintln!("[in-paste] hwnd hardened");
-        }
-
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.render_ui(cx).into_any_element()
     }
 }

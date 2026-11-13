@@ -17,6 +17,7 @@ use std::borrow::Cow;
 use gpui_kit::component::theme::Theme;
 use gpui_kit::*;
 
+use crate::platform::windows::win;
 use crate::ui::icons::AppAssets;
 
 fn main() {
@@ -54,7 +55,10 @@ fn main() {
             focus: true,
             show: true,
             is_movable: true,
-            is_resizable: true,
+            // 边框/缩放由 platform/windows.rs 接管：创建时不加 WS_THICKFRAME，
+            // 让 GPUI 的 border_offset 按无边框算（0），harden 里再加回 thick frame
+            // 并子类化 WndProc 处理 NCCALCSIZE/NCHITTEST。
+            is_resizable: false,
             is_minimizable: false,
             window_min_size: Some(size(px(theme::MIN_CARD_W), px(theme::MIN_CARD_H))),
             ..Default::default()
@@ -62,6 +66,11 @@ fn main() {
 
         open_window(opts, cx, |window, cx| {
             window.set_window_title("in-paste");
+            // 样式与缩放接管在首帧前完成；NCCALCSIZE 改成客户区=窗口后要同步一次 viewport。
+            if win::harden(window).is_some() {
+                eprintln!("[in-paste] hwnd hardened");
+            }
+            window.bounds_changed(cx);
             let view = cx.new(|cx| ui::app::UiApp::new(window, cx));
             ui::app::wire_actions(&view, cx);
             ui::app::spawn_poll(&view, cx);

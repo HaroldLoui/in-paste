@@ -5,11 +5,14 @@
 
 #[cfg(windows)]
 pub mod win {
+    use std::sync::atomic::{AtomicIsize, Ordering};
+
     use gpui_kit::Window;
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
     const GWL_STYLE: i32 = -16;
     const GWL_EXSTYLE: i32 = -20;
+    const GWLP_WNDPROC: i32 = -4;
 
     const WS_CAPTION: isize = 0x00C0_0000;
     const WS_THICKFRAME: isize = 0x0004_0000;
@@ -34,6 +37,32 @@ pub mod win {
     const WM_NCLBUTTONDOWN: u32 = 0x00A1;
     const HTCAPTION: usize = 0x2;
 
+    const WM_NCCALCSIZE: u32 = 0x0083;
+    const WM_NCHITTEST: u32 = 0x0084;
+
+    const HTLEFT: isize = 10;
+    const HTRIGHT: isize = 11;
+    const HTTOP: isize = 12;
+    const HTTOPLEFT: isize = 13;
+    const HTTOPRIGHT: isize = 14;
+    const HTBOTTOM: isize = 15;
+    const HTBOTTOMLEFT: isize = 16;
+    const HTBOTTOMRIGHT: isize = 17;
+
+    /// 边缘缩放热区宽度（逻辑 px，按 DPI 缩放）。
+    const RESIZE_EDGE_PX: f32 = 6.0;
+
+    /// 子类化前 GPUI 的窗口过程。
+    static OLD_WNDPROC: AtomicIsize = AtomicIsize::new(0);
+
+    #[repr(C)]
+    struct WinRect {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    }
+
     #[link(name = "user32")]
     unsafe extern "system" {
         fn SetWindowLongPtrW(hwnd: isize, index: i32, value: isize) -> isize;
@@ -54,6 +83,17 @@ pub mod win {
         fn GetShellWindow() -> isize;
         fn ReleaseCapture() -> i32;
         fn SendMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize;
+        fn CallWindowProcW(
+            prev: isize,
+            hwnd: isize,
+            msg: u32,
+            wparam: usize,
+            lparam: isize,
+        ) -> isize;
+        fn DefWindowProcW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize;
+        fn GetWindowRect(hwnd: isize, rect: *mut WinRect) -> i32;
+        fn GetDpiForWindow(hwnd: isize) -> u32;
+        fn IsZoomed(hwnd: isize) -> i32;
     }
 
     #[link(name = "dwmapi")]
@@ -69,13 +109,134 @@ pub mod win {
         }
     }
 
-    /// 首帧加固：剥装饰样式、固定工具窗、清空标题、关 DWM 非客户区渲染。
+    /// 子类化窗口过程：接管 NCCALCSIZE（客户区 = 整个窗口）与 NCHITTEST
+    /// （边缘/四角优先返回系统缩放码），其余消息原样转发给 GPUI。
+    fn install_resize_wndproc(hwnd: isize) -> bool {
+        if OLD_WNDPROC.load(Ordering::Relaxed) != 0 {
+            return true;
+        }
+        let old = unsafe {
+            SetWindowLongPtrW(
+                hwnd,
+                GWLP_WNDPROC,
+                resize_wndproc as *const () as usize as isize,
+            )
+        };
+        if old == 0 {
+            return false;
+        }
+        OLD_WNDPROC.store(old, Ordering::Relaxed);
+        true
+    }
+
+    unsafe extern "system" fn resize_wndproc(
+        hwnd: isize,
+        msg: u32,
+        wparam: usize,
+        lparam: isize,
+    ) -> isize {
+        // 客户区铺满窗口，卡片才能贴边；最大化/全屏时交回默认处理。
+        if msg == WM_NCCALCSIZE && wparam != 0 && unsafe { IsZoomed(hwnd) } == 0 {
+            return 0;
+        }
+
+        // 边缘缩放优先于整卡 Drag；其它区域转发给 GPUI（它会返回 HTCAPTION）。
+        if msg == WM_NCHITTEST
+            && let Some(hit) = resize_hit_test(hwnd, lparam)
+        {
+            return hit;
+        }
+
+        // 缩放边缘的 NC 按下不能转给 GPUI：整卡 Drag 下的行/按钮会 stop_propagation，
+        // 一旦被它们吞掉，DefWindowProc 就进不了系统 sizing loop。
+        if msg == WM_NCLBUTTONDOWN && is_resize_code(wparam as isize) {
+            return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+        }
+
+        let old = OLD_WNDPROC.load(Ordering::Relaxed);
+        if old == 0 {
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        } else {
+            unsafe { CallWindowProcW(old, hwnd, msg, wparam, lparam) }
+        }
+    }
+
+    fn is_resize_code(code: isize) -> bool {
+        matches!(
+            code,
+            HTLEFT
+                | HTRIGHT
+                | HTTOP
+                | HTTOPLEFT
+                | HTTOPRIGHT
+                | HTBOTTOM
+                | HTBOTTOMLEFT
+                | HTBOTTOMRIGHT
+        )
+    }
+
+    /// 命中窗口四边/四角内侧 RESIZE_EDGE_PX 时返回对应 HT 码。
+    fn resize_hit_test(hwnd: isize, lparam: isize) -> Option<isize> {
+        unsafe {
+            if IsZoomed(hwnd) != 0 {
+                return None;
+            }
+
+            let mut rect = WinRect {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
+            if GetWindowRect(hwnd, &mut rect) == 0 {
+                return None;
+            }
+
+            let width = rect.right - rect.left;
+            let height = rect.bottom - rect.top;
+            if width <= 0 || height <= 0 {
+                return None;
+            }
+
+            // WM_NCHITTEST 的 lParam 是屏幕坐标。
+            let x = (lparam & 0xFFFF) as i16 as i32 - rect.left;
+            let y = ((lparam >> 16) & 0xFFFF) as i16 as i32 - rect.top;
+
+            let dpi = match GetDpiForWindow(hwnd) {
+                0 => 96,
+                dpi => dpi,
+            } as f32;
+            let edge = (RESIZE_EDGE_PX * dpi / 96.0).round().max(4.0) as i32;
+
+            let left = x <= edge;
+            let right = x >= width - edge;
+            let top = y <= edge;
+            let bottom = y >= height - edge;
+
+            let hit = match (top, bottom, left, right) {
+                (true, _, true, _) => HTTOPLEFT,
+                (true, _, _, true) => HTTOPRIGHT,
+                (_, true, true, _) => HTBOTTOMLEFT,
+                (_, true, _, true) => HTBOTTOMRIGHT,
+                (true, _, _, _) => HTTOP,
+                (_, true, _, _) => HTBOTTOM,
+                (_, _, true, _) => HTLEFT,
+                (_, _, _, true) => HTRIGHT,
+                _ => return None,
+            };
+            Some(hit)
+        }
+    }
+
+    /// 首帧加固：剥装饰样式、加 thick frame、固定工具窗、清空标题、关 DWM 非客户区渲染。
     pub fn harden(window: &Window) -> Option<isize> {
         let hwnd = hwnd_of(window)?;
         unsafe {
             let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
-            let bare = style
-                & !(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
+            // 保留/补回 WS_THICKFRAME，缩放交给系统 sizing loop；
+            // 其余 caption / min / max / sysmenu 仍然剥掉。
+            let bare = (style & !(WS_CAPTION | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU))
+                | WS_THICKFRAME;
             if bare != style {
                 SetWindowLongPtrW(hwnd, GWL_STYLE, bare);
             }
@@ -88,6 +249,11 @@ pub mod win {
 
             let empty = [0u16];
             SetWindowTextW(hwnd, empty.as_ptr());
+
+            // 必须在 FRAMECHANGED 之前装好，否则这次 NCCALCSIZE 会走 GPUI 的默认处理。
+            if !install_resize_wndproc(hwnd) {
+                eprintln!("[in-paste] failed to install resize wndproc");
+            }
 
             SetWindowPos(
                 hwnd,

@@ -17,8 +17,10 @@ use std::borrow::Cow;
 use gpui_kit::component::theme::Theme;
 use gpui_kit::*;
 
+use crate::ui::icons::AppAssets;
+
 fn main() {
-    application().run(|cx| {
+    application().with_assets(AppAssets).run(|cx| {
         init(cx);
         ui::app::bind_keys(cx);
 

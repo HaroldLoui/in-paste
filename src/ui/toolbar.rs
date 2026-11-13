@@ -9,7 +9,14 @@ use gpui_kit::*;
 use crate::theme::*;
 use crate::ui::icons;
 
-pub const TABS: [&str; 5] = ["全部", "文本", "图片", "PDF", "链接"];
+// pub const TABS: [&str; 5] = ["全部", "文本", "图片", "PDF", "链接"];
+pub const TABS: [IconName; 5] = [
+    IconName::LayoutGrid,
+    IconName::Type,
+    IconName::Image,
+    IconName::File,
+    IconName::Link,
+];
 
 /// `view` 用于在 on_click 里回写状态；`search` 是输入框实体。
 pub fn render(
@@ -68,9 +75,9 @@ pub fn render(
                         .flex_1()
                         .items_center()
                         .gap(px(TAB_GAP - 38.))
-                        .children(TABS.iter().enumerate().map(|(i, _label)| {
+                        .children(TABS.iter().enumerate().map(|(i, ic)| {
                             let active = i == tab;
-                            let color = if active { ACCENT } else { NAVY };
+                            // let color = if active { ACCENT } else { NAVY };
                             let v = v_tab.clone();
                             div()
                                 .id(SharedString::from(format!("tab-{i}")))
@@ -95,16 +102,7 @@ pub fn render(
                                         .justify_center()
                                         .rounded(px(12.))
                                         .when(!active, |d| d.hover(|s| s.bg(c(TILE_NORMAL))))
-                                        .child(match i {
-                                            0 => icons::grid_icon(color, 22.).into_any_element(),
-                                            1 => icons::text_icon(color, 22.).into_any_element(),
-                                            2 => icons::icon_colored(IconName::Image, 20., color)
-                                                .into_any_element(),
-                                            3 => icons::icon_colored(IconName::File, 20., color)
-                                                .into_any_element(),
-                                            _ => icons::icon_colored(IconName::Link, 20., color)
-                                                .into_any_element(),
-                                        }),
+                                        .child(icons::icon(*ic, 20.).into_any_element()),
                                 )
                                 .when(active, |d| {
                                     d.child(

@@ -1,4 +1,4 @@
-//! 列表行：图标块、标题、meta、选中时的三个操作按钮。
+//! 列表行：图标块、标题、meta、选中或悬停时的三个操作按钮。
 
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -19,13 +19,14 @@ pub enum RowAction {
     Delete,
 }
 
-/// `view` 用于回写选中/操作；`pos` 是可见列表位置，`real` 是 items 真实下标。
+/// `view` 用于回写选中/悬停/操作；`pos` 是可见列表位置，`real` 是 items 真实下标。
 pub fn render(
     view: &Entity<crate::ui::app::UiApp>,
     pos: usize,
     real: usize,
     item: &Item,
     selected: bool,
+    hovered: bool,
 ) -> impl IntoElement {
     let kind = item.kind;
     let tile_bg = match kind {
@@ -35,10 +36,12 @@ pub fn render(
     };
 
     let v_select = view.clone();
+    let v_hover = view.clone();
     let v_copy = view.clone();
     let v_pin = view.clone();
     let v_del = view.clone();
     let pinned = item.pinned;
+    let show_actions = selected || hovered;
 
     div()
         .id(SharedString::from(format!("row-{pos}")))
@@ -52,11 +55,20 @@ pub fn render(
         .when(selected, |d| d.bg(c(SELECT)))
         .hover(|s| s.bg(c(SELECT)))
         .cursor_pointer()
+        .on_hover(move |is_hovered, _, cx| {
+            v_hover.update(cx, |this, cx| {
+                if *is_hovered {
+                    this.hovered = Some(pos);
+                } else if this.hovered == Some(pos) {
+                    this.hovered = None;
+                }
+                cx.notify();
+            });
+        })
         .on_click(move |_, _, cx| {
             cx.stop_propagation();
             v_select.update(cx, |this, cx| {
-                this.on_row_select(pos);
-                cx.notify();
+                this.on_row_select(pos, cx);
             });
         })
         .child(
@@ -97,7 +109,7 @@ pub fn render(
         .when(pinned, |d| {
             d.child(icons::icon_colored(IconName::Pin, 16., ACCENT))
         })
-        .when(selected, |d| {
+        .when(show_actions, |d| {
             d.child(
                 div()
                     .flex()

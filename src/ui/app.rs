@@ -1,4 +1,7 @@
-//! 应用状态机：视图切换、选中/过滤、窗口显隐与尺寸、键盘与托盘/热键。
+//! 应用状态机（UI 阶段）：视图切换、选中/过滤、滚动、键盘导航。
+//!
+//! 为方便调试，**保留托盘与窗口置顶**；其余业务（剪贴板写入、cloak 显隐、
+//! 失焦隐藏、全局热键、行内增删改）暂不接入，等 UI 打磨完再接。
 
 use std::time::Duration;
 
@@ -6,21 +9,11 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
 
 use crate::core::{self, Item};
-use crate::platform::{self, Hotkey, Tray, TrayAction, windows::win};
+use crate::platform::{self, Tray, TrayAction, windows::win};
 use crate::theme::{self, *};
 use crate::ui::{preview, row, settings, toolbar};
 
-actions!(
-    in_paste,
-    [
-        MoveUp,
-        MoveDown,
-        Confirm,
-        DeleteSelected,
-        Escape,
-        FocusSearch,
-    ]
-);
+actions!(in_paste, [MoveUp, MoveDown, Escape, FocusSearch,]);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum View {
@@ -32,21 +25,18 @@ pub struct UiApp {
     window: AnyWindowHandle,
     items: Vec<Item>,
     selected: Option<usize>,
+    /// 当前悬停的可见行（用于 hover 显示行内按钮）。
+    pub hovered: Option<usize>,
     tab: usize,
     view: View,
     scroll: f32,
     search: Entity<InputState>,
     card_w: f32,
     card_h: f32,
+    /// 工具栏/设置页「置顶」开关；true 时调 win32 topmost（调试用）。
     pinned: bool,
     auto_hide: bool,
-    hidden: bool,
-    prev_fg: Option<isize>,
     hardened: bool,
-    topmost_ready: bool,
-    was_active: bool,
-    seen_active: bool,
-    _hotkey: Option<Hotkey>,
     _tray: Option<Tray>,
 }
 
@@ -67,12 +57,11 @@ impl UiApp {
         })
         .detach();
 
-        let auto_hide = std::env::var_os("INPASTE_NO_AUTOHIDE").is_none();
-
         Self {
             window: window.window_handle(),
             items: core::initial_items(),
             selected: None,
+            hovered: None,
             tab: 0,
             view: View::List,
             scroll: 0.0,
@@ -80,14 +69,8 @@ impl UiApp {
             card_w: DEFAULT_CARD_W,
             card_h: DEFAULT_CARD_H,
             pinned: false,
-            auto_hide,
-            hidden: false,
-            prev_fg: None,
+            auto_hide: true,
             hardened: false,
-            topmost_ready: false,
-            was_active: true,
-            seen_active: false,
-            _hotkey: Hotkey::install(),
             _tray: platform::tray::install(),
         }
     }
@@ -130,9 +113,16 @@ impl UiApp {
         self.scroll = 0.0;
     }
 
+    /// 置顶开关：翻转 UI 状态并调 win32 topmost（调试期保留）。
     pub fn toggle_pin(&mut self, cx: &mut Context<Self>) {
         self.pinned = !self.pinned;
-        self.apply_pin_now(cx);
+        let pinned = self.pinned;
+        let handle = self.window;
+        let _ = handle.update(cx, |_, window, _| {
+            if let Some(hwnd) = win::hwnd_of(window) {
+                win::set_topmost(hwnd, pinned);
+            }
+        });
     }
 
     pub fn open_settings(&mut self) {
@@ -153,108 +143,25 @@ impl UiApp {
         let _ = handle.update(cx, |_, window, _| window.remove_window());
     }
 
-    pub fn on_row_select(&mut self, pos: usize) {
+    pub fn on_row_select(&mut self, pos: usize, cx: &mut Context<Self>) {
         self.selected = if self.selected == Some(pos) {
             None
         } else {
             Some(pos)
         };
+        // 选中展开预览 → 窗口横向加宽（UI 交互）
+        self.sync_window(cx);
     }
 
-    pub fn on_row_action(&mut self, real: usize, action: row::RowAction, cx: &mut Context<Self>) {
+    /// 行内按钮：UI 阶段只做选中反馈，不写剪贴板、不改数据、不藏面板。
+    pub fn on_row_action(&mut self, _real: usize, action: row::RowAction, cx: &mut Context<Self>) {
         match action {
-            row::RowAction::Copy => {
-                let title = self.items[real].title.to_owned();
-                cx.write_to_clipboard(ClipboardItem::new_string(title));
-                self.hide(cx);
-            }
-            row::RowAction::Pin => {
-                self.items[real].pinned = !self.items[real].pinned;
+            row::RowAction::Copy | row::RowAction::Pin | row::RowAction::Delete => {
+                // 业务后接：复制到剪贴板 / 置顶排序 / 删除记录
                 self.selected = None;
-            }
-            row::RowAction::Delete => {
-                self.items.remove(real);
-                self.selected = None;
-                self.sync_window(cx);
+                cx.notify();
             }
         }
-    }
-
-    // ---------------------------------------------------------------- 显隐
-
-    fn hide(&mut self, cx: &mut Context<Self>) {
-        if self.hidden {
-            return;
-        }
-        self.hidden = true;
-        self.selected = None;
-        self.view = View::List;
-        self.scroll = 0.0;
-
-        let handle = self.window;
-        let prev_fg = self.prev_fg;
-        let _ = handle.update(cx, |_, window, _| {
-            let Some(hwnd) = win::hwnd_of(window) else {
-                return;
-            };
-            win::set_cloaked(hwnd, true);
-            if win::foreground() == hwnd {
-                let target = prev_fg
-                    .filter(|prev| *prev != hwnd && win::is_window(*prev))
-                    .or_else(|| {
-                        let s = win::shell_window();
-                        (s != 0 && s != hwnd).then_some(s)
-                    });
-                if let Some(target) = target {
-                    win::set_foreground(target);
-                }
-            }
-        });
-        cx.notify();
-    }
-
-    fn show(&mut self, cx: &mut Context<Self>) {
-        self.hidden = false;
-        self.view = View::List;
-        self.selected = None;
-        self.scroll = 0.0;
-        self.was_active = false;
-
-        let (w, h) = theme::window_size(self.card_w, self.card_h, false);
-        let handle = self.window;
-        let search = self.search.clone();
-        let prev_fg_slot = &mut self.prev_fg;
-        let _ = handle.update(cx, |_, window, cx| {
-            if let Some(hwnd) = win::hwnd_of(window) {
-                let fg = win::foreground();
-                if fg != 0 && fg != hwnd && win::is_window(fg) {
-                    *prev_fg_slot = Some(fg);
-                }
-                win::set_cloaked(hwnd, false);
-            }
-            window.resize(size(px(w), px(h)));
-            window.activate_window();
-            search.update(cx, |state, cx| state.focus(window, cx));
-        });
-        cx.notify();
-    }
-
-    fn toggle_panel(&mut self, cx: &mut Context<Self>) {
-        if self.hidden {
-            self.show(cx);
-        } else {
-            self.hide(cx);
-        }
-    }
-
-    fn apply_pin_now(&self, cx: &mut Context<Self>) {
-        let pinned = self.pinned;
-        let handle = self.window;
-        let _ = handle.update(cx, |_, window, _| {
-            if let Some(hwnd) = win::hwnd_of(window) {
-                win::set_topmost(hwnd, pinned);
-            }
-        });
     }
 
     // ---------------------------------------------------------------- 键盘
@@ -298,35 +205,6 @@ impl UiApp {
         self.scroll = self.scroll.clamp(0.0, max_scroll);
     }
 
-    fn confirm_copy(&mut self, cx: &mut Context<Self>) {
-        let q = self.query(cx);
-        let visible = self.visible(&q);
-        if let Some(sel) = self.selected
-            && let Some(&real) = visible.get(sel)
-        {
-            let title = self.items[real].title.to_owned();
-            cx.write_to_clipboard(ClipboardItem::new_string(title));
-            self.hide(cx);
-        }
-    }
-
-    fn delete_selected(&mut self, cx: &mut Context<Self>) {
-        let q = self.query(cx);
-        let visible = self.visible(&q);
-        if let Some(sel) = self.selected
-            && let Some(&real) = visible.get(sel)
-        {
-            self.items.remove(real);
-            let visible = self.visible(&q);
-            self.selected = if visible.is_empty() {
-                None
-            } else {
-                Some(sel.min(visible.len() - 1))
-            };
-            cx.notify();
-        }
-    }
-
     fn on_escape(&mut self, cx: &mut Context<Self>) {
         match self.view {
             View::Settings => {
@@ -344,11 +222,10 @@ impl UiApp {
                     self.selected = None;
                     self.scroll = 0.0;
                     cx.notify();
-                } else if self.selected.take().is_none() {
-                    self.hide(cx);
-                } else {
+                } else if self.selected.take().is_some() {
                     cx.notify();
                 }
+                // 无查询且无选中：UI 阶段不隐藏面板（业务后接）
             }
         }
     }
@@ -363,54 +240,31 @@ impl UiApp {
         cx.notify();
     }
 
-    // ---------------------------------------------------------------- 后台轮询
+    // ---------------------------------------------------------------- 托盘轮询（调试期保留）
 
+    /// 由 main 的定时任务调用：处理托盘菜单事件。
+    /// 托盘「显示/隐藏」暂改为聚焦窗口（cloak 显隐属业务，后接）。
     pub fn poll(&mut self, cx: &mut Context<Self>) {
-        if platform::hotkey::take_toggle() {
-            self.toggle_panel(cx);
+        let Some(action) = platform::tray::take_action() else {
             return;
-        }
-        if let Some(action) = platform::tray::take_action() {
-            match action {
-                TrayAction::Toggle => self.toggle_panel(cx),
-                TrayAction::Settings => {
-                    if self.hidden {
-                        self.show(cx);
-                    }
-                    self.view = View::Settings;
-                    self.selected = None;
-                    cx.notify();
-                }
-                TrayAction::Quit => self.exit(cx),
+        };
+        match action {
+            TrayAction::Toggle => {
+                self.view = View::List;
+                let handle = self.window;
+                let search = self.search.clone();
+                let _ = handle.update(cx, |_, window, cx| {
+                    window.activate_window();
+                    search.update(cx, |state, cx| state.focus(window, cx));
+                });
+                cx.notify();
             }
-            return;
-        }
-
-        if self.hidden {
-            return;
-        }
-
-        let handle = self.window;
-        let active = handle
-            .update(cx, |_, window, _| window.is_window_active())
-            .unwrap_or(false);
-
-        if active {
-            self.seen_active = true;
-            self.was_active = true;
-        } else {
-            let prev = handle.update(cx, |_, window, _| {
-                let hwnd = win::hwnd_of(window)?;
-                let fg = win::foreground();
-                (fg != 0 && fg != hwnd && win::is_window(fg)).then_some(fg)
-            });
-            if let Ok(Some(fg)) = prev {
-                self.prev_fg = Some(fg);
+            TrayAction::Settings => {
+                self.view = View::Settings;
+                self.selected = None;
+                cx.notify();
             }
-            if self.seen_active && self.was_active && self.auto_hide && !self.pinned {
-                self.hide(cx);
-            }
-            self.was_active = false;
+            TrayAction::Quit => self.exit(cx),
         }
     }
 
@@ -501,7 +355,9 @@ impl UiApp {
                             .children(visible.iter().enumerate().map(|(pos, &real)| {
                                 let item = &self.items[real];
                                 let is_sel = selected == Some(pos);
-                                row::render(&this, pos, real, item, is_sel).into_any_element()
+                                let is_hovered = self.hovered == Some(pos);
+                                row::render(&this, pos, real, item, is_sel, is_hovered)
+                                    .into_any_element()
                             }))
                             .into_any_element(),
                     ]
@@ -523,7 +379,6 @@ impl UiApp {
             None
         };
 
-        let v_root = this.clone();
         div()
             .id("root")
             .size_full()
@@ -533,13 +388,6 @@ impl UiApp {
             .pt(px(MARGIN_TOP))
             .pb(px(MARGIN_BOTTOM))
             .px(px(MARGIN_X))
-            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                v_root.update(cx, |this, cx| {
-                    if !this.pinned && !this.hidden {
-                        this.hide(cx);
-                    }
-                });
-            })
             .child(card)
             .children(preview_el)
             .into_any_element()
@@ -548,19 +396,10 @@ impl UiApp {
 
 impl Render for UiApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // 窗口视觉加固（剥 caption / 工具窗），非业务行为
         if !self.hardened && win::harden(window).is_some() {
             self.hardened = true;
             eprintln!("[in-paste] hwnd hardened");
-        }
-        if !self.topmost_ready {
-            if let Some(hwnd) = win::hwnd_of(window) {
-                win::set_topmost(hwnd, true);
-            }
-            self.topmost_ready = true;
-        }
-
-        if self.hidden {
-            return div().id("root-hidden").size_full().into_any_element();
         }
 
         self.render_ui(cx).into_any_element()
@@ -572,45 +411,33 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("up", MoveUp, None),
         KeyBinding::new("down", MoveDown, None),
-        KeyBinding::new("enter", Confirm, None),
-        KeyBinding::new("delete", DeleteSelected, None),
         KeyBinding::new("escape", Escape, None),
         KeyBinding::new("ctrl-f", FocusSearch, None),
+        // enter / delete 绑定业务（复制、删除），UI 阶段不注册
     ]);
 }
 
 /// 把动作接到 view（open_window 后调用）。
 pub fn wire_actions(view: &Entity<UiApp>, cx: &mut App) {
-    macro_rules! wire {
-        ($($action:ident => $method:ident),* $(,)?) => {
-            $(
-                let v = view.clone();
-                cx.on_action(move |_: &$action, cx| {
-                    let _ = v.update(cx, |this, cx| this.$method(cx));
-                });
-            )*
-        };
-    }
-    wire!(
-        MoveUp => move_up_action,
-        MoveDown => move_down_action,
-        Confirm => confirm_copy,
-        DeleteSelected => delete_selected,
-        Escape => on_escape,
-        FocusSearch => focus_search,
-    );
+    let v = view.clone();
+    cx.on_action(move |_: &MoveUp, cx| {
+        v.update(cx, |this, cx| this.move_sel(-1, cx));
+    });
+    let v = view.clone();
+    cx.on_action(move |_: &MoveDown, cx| {
+        v.update(cx, |this, cx| this.move_sel(1, cx));
+    });
+    let v = view.clone();
+    cx.on_action(move |_: &Escape, cx| {
+        v.update(cx, |this, cx| this.on_escape(cx));
+    });
+    let v = view.clone();
+    cx.on_action(move |_: &FocusSearch, cx| {
+        v.update(cx, |this, cx| this.focus_search(cx));
+    });
 }
 
-impl UiApp {
-    fn move_up_action(&mut self, cx: &mut Context<Self>) {
-        self.move_sel(-1, cx);
-    }
-    fn move_down_action(&mut self, cx: &mut Context<Self>) {
-        self.move_sel(1, cx);
-    }
-}
-
-/// 后台轮询任务：热键 / 托盘 / 失焦隐藏。
+/// 后台轮询：托盘事件（调试期保留）。
 pub fn spawn_poll(view: &Entity<UiApp>, cx: &mut App) {
     let weak = view.downgrade();
     cx.spawn(async move |cx| {

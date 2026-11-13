@@ -5,7 +5,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::theme::*;
-use crate::ui::icons;
+use crate::ui::{icons, no_drag_div};
 
 #[allow(dead_code)]
 fn render(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
@@ -258,8 +258,7 @@ fn header(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
                 ),
         )
         .child(
-            div()
-                .id("btn-back")
+            no_drag_div("btn-back")
                 .flex()
                 .items_center()
                 .gap(px(6.))
@@ -283,8 +282,7 @@ fn header(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
 
 fn exit_row(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
     let v_exit = view.clone();
-    div()
-        .id("btn-exit")
+    no_drag_div("btn-exit")
         .mt(px(16.))
         .w_full()
         .h(px(52.))
@@ -313,8 +311,7 @@ fn switch_row(
     on_toggle: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
     let label = label.to_owned();
-    div()
-        .id(SharedString::from(format!("switch-{id}")))
+    no_drag_div(SharedString::from(format!("switch-{id}")))
         .w_full()
         .h(px(52.))
         .flex()

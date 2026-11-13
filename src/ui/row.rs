@@ -6,7 +6,7 @@ use gpui_kit::*;
 
 use crate::core::{Item, Kind};
 use crate::theme::*;
-use crate::ui::icons;
+use crate::ui::{icons, no_drag_div};
 
 pub fn height(index: usize) -> f32 {
     if index == 0 { ROW0_H } else { ROW_H }
@@ -43,8 +43,7 @@ pub fn render(
     let pinned = item.pinned;
     let show_actions = selected || hovered;
 
-    div()
-        .id(SharedString::from(format!("row-{pos}")))
+    no_drag_div(SharedString::from(format!("row-{pos}")))
         .w_full()
         .h(px(height(pos) - 1.))
         .flex()
@@ -155,8 +154,7 @@ fn action_btn(
     color: Tup,
     on_click: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
-    div()
-        .id(SharedString::from(format!("rowbtn-{id}")))
+    no_drag_div(SharedString::from(format!("rowbtn-{id}")))
         .size(px(HOVER_BTN))
         .flex()
         .items_center()

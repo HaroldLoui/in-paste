@@ -41,6 +41,8 @@ pub const TABS_CY: f32 = 112.0;
 pub const TOOLBAR_PAD_X: f32 = 30.0;
 /// 搜索行与 tabs 行之间的留白（也是拖拽带）。
 pub const TOOLBAR_GAP: f32 = 12.0;
+pub const SEARCH_ROW_H: f32 = 58.0;
+pub const TABS_ROW_H: f32 = 48.0;
 pub const TAB_FIRST: f32 = 44.0;
 pub const TAB_GAP: f32 = 72.0;
 

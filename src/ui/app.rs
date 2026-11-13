@@ -299,14 +299,15 @@ impl UiApp {
             .rounded(px(CARD_R))
             .bg(c(CARD_BG))
             .overflow_hidden()
-            // 卡片顶部 18px 留白：工具栏的 pt 区域，正好是拖拽带。
+            // 整卡声明为窗口拖动区：交互组件在 mouse down 时停冒泡，
+            // 只有空白处（含工具栏留白/列表空白）才会真正拖动窗口。
             .child(
-                drag_zone("drag-top")
+                drag_zone("drag-card")
                     .absolute()
                     .top_0()
                     .left_0()
                     .w_full()
-                    .h(px(CARD_TOP_PAD)),
+                    .h_full(),
             );
 
         match view_kind {

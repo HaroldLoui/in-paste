@@ -7,7 +7,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::theme::*;
-use crate::ui::{drag_zone, icons};
+use crate::ui::{icons, no_drag_div};
 
 // pub const TABS: [&str; 5] = ["全部", "文本", "图片", "PDF", "链接"];
 pub const TABS: [IconName; 5] = [
@@ -36,23 +36,26 @@ pub fn render(
         .flex_col()
         .pt(px(CARD_TOP_PAD))
         .px(px(TOOLBAR_PAD_X))
+        .gap(px(TOOLBAR_GAP))
         .child(
             div()
                 .id("search-row")
                 .w_full()
-                .h(px(58.))
+                .h(px(SEARCH_ROW_H))
                 .flex()
                 .items_center()
                 .child(
                     div()
                         .id("search-capsule")
                         .flex_1()
-                        .h(px(58.))
+                        .h(px(SEARCH_ROW_H))
                         .flex()
                         .items_center()
                         .px(px(20.))
                         .rounded(px(29.))
                         .bg(c(SEARCH_BG))
+                        // 输入框区域走正常客户区：保住点击聚焦与拖选文本。
+                        .occlude()
                         .child(
                             Input::new(search)
                                 .appearance(false)
@@ -60,28 +63,25 @@ pub fn render(
                         ),
                 ),
         )
-        // 搜索行与 tabs 行之间的空白：拖拽带。
-        .child(drag_zone("drag-toolbar-gap").w_full().h(px(TOOLBAR_GAP)))
         .child(
             div()
                 .id("tabs-row")
                 .w_full()
-                .h(px(48.))
+                .h(px(TABS_ROW_H))
                 .flex()
                 .items_center()
                 .child(
                     div()
                         .id("tabs")
                         .flex()
-                        .flex_shrink_0()
+                        .flex_1()
                         .items_center()
                         .gap(px(TAB_GAP - 38.))
                         .children(TABS.iter().enumerate().map(|(i, ic)| {
                             let active = i == tab;
                             // let color = if active { ACCENT } else { NAVY };
                             let v = v_tab.clone();
-                            div()
-                                .id(SharedString::from(format!("tab-{i}")))
+                            no_drag_div(SharedString::from(format!("tab-{i}")))
                                 .flex()
                                 .flex_col()
                                 .items_center()
@@ -113,8 +113,6 @@ pub fn render(
                                 .into_any_element()
                         })),
                 )
-                // tabs 右侧空白：拖拽带，把置顶/设置按钮顶到右边。
-                .child(drag_zone("drag-toolbar-right").flex_1().h_full())
                 .child(
                     div()
                         .id("win-actions")
@@ -142,8 +140,7 @@ fn icon_btn(
     active: bool,
     on_click: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
-    div()
-        .id(SharedString::from(format!("btn-{id}")))
+    no_drag_div(SharedString::from(format!("btn-{id}")))
         .size(px(38.))
         .flex()
         .items_center()

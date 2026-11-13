@@ -1,6 +1,6 @@
 # in-paste 开发计划（v1）
 
-> 状态：**gpui-kit 重写进行中**（2026-11-12，分支 `feat/gpui-rewrite`）；原 egui 实现见 git 历史与 [`REVIEW.md`](REVIEW.md)  
+> 状态：**gpui-kit 重写阶段 1**（分支 `feat/gpui-rewrite`）；窗口层拖拽/缩放已完成（2026-11-13，见 [`REVIEW.md`](REVIEW.md) §9 与本文 §12）。原 egui 实现见 git 历史。
 > 基线需求：[`ui.md`](../ui.md)、设计稿 [`ui.png`](../ui.png)  
 > 阶段 0 spike 已通过（7/7，结论见 [`REVIEW.md`](REVIEW.md) §8.2）；当前进入阶段 1 正式重写。
 
@@ -33,7 +33,7 @@
 ## 3. 技术栈（gpui-kit 重写版）
 
 - GUI：**gpui-kit 0.9.1**（内置 gpui-pre 0.3.12 + gpui-component + assets）。
-- 窗口：GPUI 原生 Win32 后端（不经过 winit）；`platform/windows.rs` 负责 hwnd 加固（剥 caption / WS_EX_TOOLWINDOW / 清标题 / 关 DWM NC）、cloak、置顶、拖动。
+- 窗口：GPUI 原生 Win32 后端（不经过 winit）；`platform/windows.rs` 负责 hwnd 加固（剥 caption / WS_EX_TOOLWINDOW / 清标题 / 关 DWM NC）、加 `WS_THICKFRAME` 并子类化 WndProc 接管 `WM_NCCALCSIZE` / `WM_NCHITTEST` 实现四边缩放、cloak、置顶。拖拽用整卡 `WindowControlArea::Drag` + 交互组件挡板（见 §12）。
 - 透明：`WindowBackgroundAppearance::Transparent` + 主题根背景置透明（gpui-component RootPlugin 默认刷不透明底色，必须覆盖）。
 - 图标：`gpui_kit::assets::IconName`（Lucide 全量）+ 少量几何自绘（grid / T）。
 - 字体：`TextSystem::add_fonts` 加载 msyh.ttc / segoeui.ttf，主题 `font_family = Microsoft YaHei`。
@@ -118,7 +118,9 @@ raw-window-handle = "0.6"
 
 真实剪贴板监听 → SQLite 持久化 → 全局热键呼出 → 托盘与开机自启 → （可选）自动粘贴。
 
-## 11. 实现现状（2026-11-11，交互重构后）
+## 11. 实现现状（2026-11-11，egui 版）
+
+> 注：本节记录 egui 版实现；gpui-kit 版窗口层以 §12 为准，§11.1 / §11.2 中的拖动缩放与尺寸公式已不适用。
 
 ### 11.1 交互模型
 
@@ -160,3 +162,14 @@ raw-window-handle = "0.6"
 ### 11.5 未实现
 
 真实剪贴板监听、SQLite 持久化、开机自启、自动粘贴（均属后续里程碑）。
+
+## 12. 窗口层现状（2026-11-13，gpui-kit）
+
+窗口层（拖拽 + 缩放）已完成，最终形态以本节与 [`REVIEW.md`](REVIEW.md) §9 为准：
+
+- **布局**：卡片 = 窗口，窗口不再保留透明留白；`theme::window_size` 只负责卡片（预览增量保留但暂不参与，后续换 popover）。最小 500×420。
+- **拖动**：卡片铺一层 `WindowControlArea::Drag`；行 / tabs / 按钮 / 设置页控件用 `no_drag_div`（mouse down 停冒泡）保住点击；搜索输入框等"按住拖动"控件用 `.occlude()`，因为它需要正常客户区鼠标移动（NC 路径下 `pressed_button` 恒为 `None`）。
+- **缩放**：创建时 `is_resizable: false`（有意为之，让 GPUI `border_offset` 为 0）；`harden` 里加回 `WS_THICKFRAME` 并用 `SetWindowLongPtrW(GWLP_WNDPROC)` 子类化：`WM_NCCALCSIZE` 返回 0（客户区 = 整窗）、`WM_NCHITTEST` 四边/四角 6 逻辑 px 返回 `HT*`、缩放边缘的 `WM_NCLBUTTONDOWN` 直接交 `DefWindowProc`。
+- **跟随**：用户拖窗口 → `observe_window_bounds` 把 `window.viewport_size()` 回写 `card_w/card_h`；主卡 `flex_shrink_0`，选行渲染预览元素时不压缩主卡。
+- **预览卡**：暂不参与窗口尺寸，后续改为 gpui-kit Popover；切过去时删除 `PREVIEW_*` 与 `expanded()` 相关窗口逻辑。
+- **质量门**：`cargo fmt --check` / `cargo clippy --all-targets` / `cargo build` 全过。

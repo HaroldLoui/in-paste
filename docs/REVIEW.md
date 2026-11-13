@@ -155,7 +155,7 @@ M1 起按实机观感调整了布局与窗口策略，与上文（M0 阶段的�
 ```
 src/
   core/       纯逻辑（model，无 Ctrl+数字）
-  platform/   windows.rs（hwnd/cloak/置顶/拖动）+ hotkey + tray
+  platform/   windows.rs（hwnd/样式/缩放 WndProc 子类/cloak/置顶）+ hotkey + tray
   theme.rs    设计 token（唯一改样式处）
   ui/         app / toolbar / row / preview / settings / icons
   main.rs     字体 / 主题 / 窗口 / 动作绑定 / 轮询任务
@@ -166,7 +166,43 @@ src/
 
 ### 8.4 待办（阶段 2+）
 
-- 窗口边缘自定义缩放（旧版 Dir/Resize 逻辑未迁）
-- 拖动热区精细化（当前仅卡片 on_mouse_down 停冒泡，begin_drag 已备）
-- 预览卡左缘箭头
+- ~~窗口边缘自定义缩放~~ ✅ 2026-11-13，见 §9.3
+- ~~拖动热区~~ ✅ 2026-11-13，见 §9.2
+- 预览卡：后续改为 gpui-kit Popover（不再保留左缘箭头与单窗横向扩展）
 - 真实剪贴板 / 持久化 / 自启（原 M3–M5）
+
+## 9. 窗口层收尾：拖动与缩放（2026-11-13，gpui-kit）
+
+本节覆盖 §8.4 里"拖动/缩放未完成"的两项，最终形态以本节为准；§7.3 是 egui 版方案，已不适用。
+
+### 9.1 布局：卡片 = 窗口
+
+- 去掉窗口四周的 24/40/64 透明留白；root 不再有 padding，卡片直接铺满窗口。
+- `theme::window_size` 只负责卡片（预览增量保留但暂不参与）；窗口最小尺寸 `MIN_CARD = 500×420`，由工具栏实测（5 个 tab + 置顶/设置 + padding ≈ 468）上调而来。
+- 用户拖窗口 → `observe_window_bounds` 把 `window.viewport_size()` 回写 `card_w/card_h`；主卡加 `flex_shrink_0`，选行渲染预览元素时不会压缩主卡。
+
+### 9.2 拖动：整卡 Drag + 交互组件挡板
+
+- 卡片子节点铺一层 `window_control_area(WindowControlArea::Drag)`：整卡在 `WM_NCHITTEST` 阶段是 `HTCAPTION`，空白处按住即可拖窗口。
+- 交互组件必须"挡一下"，否则按下会被当成拖标题栏：
+  - **点击类**（行、tabs、置顶/设置、设置页返回/开关/退出）用 `no_drag_div`（`on_any_mouse_down` 停冒泡）。不停会让 NC MouseDown 交给 `DefWindowProc` 进入移动循环：click 永远完不成，`pending_mouse_down` 卡住还会抑制 hover——表现就是"行选中/悬停时三个 action 按钮不出现"。
+  - **按住拖动类**（搜索输入框，以后滑杆/拖拽手柄/弹层）用 `.occlude()`。整卡 Drag 下鼠标移动走 NC 通道，`pressed_button` 恒为 `None`；停冒泡只能保住 click，保不住拖动手势。
+- 不要嵌套 Drag 区：控制区回调只判断"命中栈里有没有"，父级会先命中。
+- 源码位置：`ui/mod.rs` 的 `drag_zone` / `no_drag_div`，`ui/row.rs`、`ui/toolbar.rs`、`ui/settings.rs`。
+
+### 9.3 缩放：WS_THICKFRAME + WndProc 子类
+
+- 创建时 `is_resizable: false` 是**有意为之**：GPUI 的 `border_offset` 按无边框算 0，避免客户区/窗口尺寸换算偏差；`harden` 里再加回 `WS_THICKFRAME`。
+- `harden` 用 `SetWindowLongPtrW(GWLP_WNDPROC)` 子类化，保存旧 proc：
+  - `WM_NCCALCSIZE`（wParam=TRUE）返回 0：客户区 = 整窗，卡片贴边；最大化时放行。
+  - `WM_NCHITTEST`：距四边/四角 6 逻辑 px（按 DPI 缩放）返回 `HTLEFT/.../HTBOTTOMRIGHT`；其余转发 GPUI（整卡 Drag）。
+  - 缩放边缘的 `WM_NCLBUTTONDOWN` **直接交 `DefWindowProc`**，不能转给 GPUI——边缘压在行上时会被 `no_drag_div` 的 `stop_propagation` 吞掉，系统 sizing loop 起不来。
+  - 其余消息 `CallWindowProcW` 转发给 GPUI。
+- DWM 非客户区渲染仍关闭（不画边框）；光标由 `WM_SETCURSOR` 给出缩放形状。顶部最外 6px 归 resize，18px 拖拽带实际剩 12px。
+- 已知取舍：不做最大化/最小化；边缘热区优先于拖拽和组件点击；如果以后要"按住组件也能拖"，不能靠 `window_control_area`，要在事件层做阈值拖动（`begin_drag` + post 消息/子类化，避免 `SendMessage` 重入 GPUI 借用）。
+
+### 9.4 验证与质量门
+
+- 实机验证（100% / 150%）：四边/四角缩放、最小尺寸、放大后卡片铺满、缩小后底部圆角完整、整卡拖拽、行点击/hover/三按钮、tabs/置顶/设置、搜索框聚焦与拖选、列表滚轮、设置页控件。
+- `cargo fmt --check` / `cargo clippy --all-targets` / `cargo build` 全过。
+- 相关提交：`198c3a7` 整卡拖拽、`26a6684` 缩放平台层、`7f1301b` 卡片跟随窗口、`74c31fe` 挡板边界注释。

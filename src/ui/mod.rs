@@ -17,7 +17,12 @@ pub fn drag_zone(id: &'static str) -> Stateful<Div> {
     div().id(id).window_control_area(WindowControlArea::Drag)
 }
 
-/// 因为整个窗口实际都是一个可拖动的`drag_zone`，所以可交互的组件都需要加`stop_propagation`避免被`drag`事件覆盖原事件行为
+/// 交互组件挡板：整卡铺了 [`drag_zone`]，可交互组件必须在下按时停冒泡，
+/// 否则这次按下会被 WM_NCHITTEST 当成拖标题栏，click 永远完不成。
+///
+/// 只适合"点击"类控件。需要按住拖动、依赖鼠标移动的控件（文本输入/选择、
+/// 滑杆、拖拽手柄、弹层菜单）请改用 `.occlude()`：整卡 Drag 下鼠标移动走
+/// NC 通道，`pressed_button` 恒为 `None`，停冒泡只能保住 click，保不住拖动手势。
 pub fn no_drag_div(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
         .id(id)

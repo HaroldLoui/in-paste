@@ -7,7 +7,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::theme::*;
-use crate::ui::icons;
+use crate::ui::{drag_zone, icons};
 
 // pub const TABS: [&str; 5] = ["全部", "文本", "图片", "PDF", "链接"];
 pub const TABS: [IconName; 5] = [
@@ -34,9 +34,8 @@ pub fn render(
         .w_full()
         .flex()
         .flex_col()
-        .pt(px(18.))
+        .pt(px(CARD_TOP_PAD))
         .px(px(TOOLBAR_PAD_X))
-        .gap(px(12.))
         .child(
             div()
                 .id("search-row")
@@ -61,6 +60,8 @@ pub fn render(
                         ),
                 ),
         )
+        // 搜索行与 tabs 行之间的空白：拖拽带。
+        .child(drag_zone("drag-toolbar-gap").w_full().h(px(TOOLBAR_GAP)))
         .child(
             div()
                 .id("tabs-row")
@@ -72,7 +73,7 @@ pub fn render(
                     div()
                         .id("tabs")
                         .flex()
-                        .flex_1()
+                        .flex_shrink_0()
                         .items_center()
                         .gap(px(TAB_GAP - 38.))
                         .children(TABS.iter().enumerate().map(|(i, ic)| {
@@ -112,6 +113,8 @@ pub fn render(
                                 .into_any_element()
                         })),
                 )
+                // tabs 右侧空白：拖拽带，把置顶/设置按钮顶到右边。
+                .child(drag_zone("drag-toolbar-right").flex_1().h_full())
                 .child(
                     div()
                         .id("win-actions")

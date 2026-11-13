@@ -1,7 +1,7 @@
 //! 颜色、尺寸、圆角等设计 token。
 //! 数值来自设计稿的逐像素测量，改这里就能整体校准观感。
 //!
-//! 布局模型：窗口 = 卡片 + 四周留白；展开时窗口右侧再多一块预览卡。
+//! 布局模型：窗口 = 卡片（卡片撑满窗口）；展开时窗口右侧再多一块预览卡。
 //! 卡片尺寸是状态，窗口尺寸由它推导。
 
 #![allow(dead_code)]
@@ -10,12 +10,8 @@ use gpui_kit::Rgba;
 
 // ---------------------------------------------------------------- 窗口 / 卡片
 
-/// 窗口左右留白（承载卡片阴影，也是拖拽热区）。
-pub const MARGIN_X: f32 = 24.0;
-/// 窗口顶部留白。
-pub const MARGIN_TOP: f32 = 40.0;
-/// 窗口底部留白。
-pub const MARGIN_BOTTOM: f32 = 64.0;
+/// 卡片顶部拖拽带高度（同时是工具栏顶部留白）。
+pub const CARD_TOP_PAD: f32 = 18.0;
 /// 主卡与预览卡之间的间距。
 pub const PREVIEW_GAP: f32 = 20.0;
 
@@ -43,6 +39,8 @@ pub const HOVER_BTN: f32 = 34.0;
 
 pub const TABS_CY: f32 = 112.0;
 pub const TOOLBAR_PAD_X: f32 = 30.0;
+/// 搜索行与 tabs 行之间的留白（也是拖拽带）。
+pub const TOOLBAR_GAP: f32 = 12.0;
 pub const TAB_FIRST: f32 = 44.0;
 pub const TAB_GAP: f32 = 72.0;
 
@@ -106,8 +104,5 @@ pub fn window_size(card_w: f32, card_h: f32, expanded: bool) -> (f32, f32) {
     } else {
         0.0
     };
-    (
-        card_w + 2.0 * MARGIN_X + extra_w,
-        card_h + MARGIN_TOP + MARGIN_BOTTOM,
-    )
+    (card_w + extra_w, card_h)
 }

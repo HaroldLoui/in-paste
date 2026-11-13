@@ -11,7 +11,7 @@ use gpui_kit::*;
 use crate::core::{self, Item};
 use crate::platform::{self, Tray, TrayAction, windows::win};
 use crate::theme::{self, *};
-use crate::ui::{preview, row, settings, toolbar};
+use crate::ui::{drag_zone, preview, row, settings, toolbar};
 
 actions!(in_paste, [MoveUp, MoveDown, Escape, FocusSearch,]);
 
@@ -299,7 +299,15 @@ impl UiApp {
             .rounded(px(CARD_R))
             .bg(c(CARD_BG))
             .overflow_hidden()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+            // 卡片顶部 18px 留白：工具栏的 pt 区域，正好是拖拽带。
+            .child(
+                drag_zone("drag-top")
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .h(px(CARD_TOP_PAD)),
+            );
 
         match view_kind {
             View::List => {
@@ -385,9 +393,6 @@ impl UiApp {
             .flex()
             .items_start()
             .gap(px(PREVIEW_GAP))
-            .pt(px(MARGIN_TOP))
-            .pb(px(MARGIN_BOTTOM))
-            .px(px(MARGIN_X))
             .child(card)
             .children(preview_el)
             .into_any_element()

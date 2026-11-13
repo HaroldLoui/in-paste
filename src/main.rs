@@ -36,10 +36,13 @@ fn main() {
             theme.tokens.background = clear.into();
         });
 
+        // 卡片撑满窗口：窗口尺寸由卡片推导，不再留透明边。
+        let (window_w, window_h) =
+            theme::window_size(theme::DEFAULT_CARD_W, theme::DEFAULT_CARD_H, false);
         let opts = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
-                size(px(720.), px(920.)),
+                size(px(window_w), px(window_h)),
                 cx,
             ))),
             titlebar: Some(TitlebarOptions {
@@ -51,9 +54,9 @@ fn main() {
             focus: true,
             show: true,
             is_movable: true,
-            is_resizable: false,
+            is_resizable: true,
             is_minimizable: false,
-            window_min_size: Some(size(px(508.), px(484.))),
+            window_min_size: Some(size(px(theme::MIN_CARD_W), px(theme::MIN_CARD_H))),
             ..Default::default()
         };
 

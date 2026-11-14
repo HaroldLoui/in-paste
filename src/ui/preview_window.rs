@@ -15,7 +15,7 @@ pub const PREVIEW_MARGIN: f32 = 24.0;
 /// 预览窗口与屏幕边缘保留的距离。
 pub const PREVIEW_SCREEN_MARGIN: f32 = 8.0;
 /// 预览窗在左侧时，卡片在窗内额外左移一点，给右侧箭头留空间。
-const PREVIEW_LEFT_CARD_X: f32 = 16.0;
+const PREVIEW_LEFT_CARD_X: f32 = 10.0;
 pub const PREVIEW_WIN_W: f32 = PREVIEW_W + PREVIEW_MARGIN * 2.0;
 pub const PREVIEW_WIN_H: f32 = PREVIEW_H + PREVIEW_MARGIN * 2.0;
 
@@ -83,8 +83,8 @@ fn arrow(side: PreviewSide, card_x: f32, content_h: f32) -> AnyElement {
             let half = 18.0;
 
             let (tip_x, base_x) = match side {
-                PreviewSide::Right => (card_left - 20.0, card_left - 1.0),
-                PreviewSide::Left => (card_right + 20.0, card_right - 1.0),
+                PreviewSide::Right => (card_left - 20.0, card_left + 1.0),
+                PreviewSide::Left => (card_right + 18.0, card_right - 1.0),
             };
 
             let mut path = PathBuilder::fill();

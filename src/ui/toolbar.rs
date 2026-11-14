@@ -51,8 +51,8 @@ pub fn render(
                         .h(px(SEARCH_ROW_H))
                         .flex()
                         .items_center()
-                        .px(px(20.))
-                        .rounded(px(29.))
+                        .px(pxu(20.))
+                        .rounded(pxu(29.))
                         .bg(c(SEARCH_BG))
                         // 输入框区域走正常客户区：保住点击聚焦与拖选文本。
                         .occlude()
@@ -76,7 +76,7 @@ pub fn render(
                         .flex()
                         .flex_1()
                         .items_center()
-                        .gap(px(TAB_GAP - 38.))
+                        .gap(px(TAB_GAP - s(38.0)))
                         .children(TABS.iter().enumerate().map(|(i, ic)| {
                             let active = i == tab;
                             // let color = if active { ACCENT } else { NAVY };
@@ -85,7 +85,7 @@ pub fn render(
                                 .flex()
                                 .flex_col()
                                 .items_center()
-                                .gap(px(4.))
+                                .gap(pxu(4.))
                                 .cursor_pointer()
                                 .on_click(move |_, _, cx| {
                                     cx.stop_propagation();
@@ -97,17 +97,17 @@ pub fn render(
                                 .child(
                                     div()
                                         .id(SharedString::from(format!("tab-icon-{i}")))
-                                        .size(px(38.))
+                                        .size(pxu(38.))
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .rounded(px(12.))
+                                        .rounded(pxu(12.))
                                         .when(!active, |d| d.hover(|s| s.bg(c(TILE_NORMAL))))
                                         .child(icons::icon(*ic, 20.).into_any_element()),
                                 )
                                 .when(active, |d| {
                                     d.child(
-                                        div().w(px(30.)).h(px(3.)).rounded(px(2.)).bg(c(ACCENT)),
+                                        div().w(pxu(30.)).h(pxu(3.)).rounded(pxu(2.)).bg(c(ACCENT)),
                                     )
                                 })
                                 .into_any_element()
@@ -117,7 +117,7 @@ pub fn render(
                     div()
                         .id("win-actions")
                         .flex()
-                        .gap(px(6.))
+                        .gap(pxu(6.))
                         .child(icon_btn("pin", IconName::Pin, pinned, move |cx| {
                             v_pin.update(cx, |this, cx| {
                                 this.toggle_pin(cx);
@@ -141,11 +141,11 @@ fn icon_btn(
     on_click: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
     no_drag_div(SharedString::from(format!("btn-{id}")))
-        .size(px(38.))
+        .size(pxu(38.))
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(10.))
+        .rounded(pxu(10.))
         .cursor_pointer()
         .when(active, |d| d.bg(c(ACCENT)))
         .when(!active, |d| d.hover(|s| s.bg(c(PILL))))

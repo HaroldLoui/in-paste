@@ -11,7 +11,7 @@ use gpui_kit::*;
 use crate::core::{self, Item};
 use crate::platform::{self, Tray, TrayAction, windows::win};
 use crate::theme::*;
-use crate::ui::preview_window::{
+use crate::ui::preview::{
     PREVIEW_MARGIN, PREVIEW_SCREEN_MARGIN, PREVIEW_WIN_H, PREVIEW_WIN_W, PreviewSide, PreviewState,
     PreviewWindow,
 };
@@ -50,7 +50,7 @@ pub struct UiApp {
 
 impl UiApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("搜索剪贴板..."));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("search..."));
         let preview_state = cx.new(|_| PreviewState::default());
 
         cx.subscribe_in(&search, window, |this, _state, event, _, cx| {
@@ -85,6 +85,8 @@ impl UiApp {
         };
 
         // 主窗口尺寸/位置是权威；卡片跟随 viewport，预览窗口跟随卡片和选中行。
+        // 最大/最小尺寸由 platform/windows.rs 的 WM_GETMINMAXINFO 限制；
+        // 这里只跟随 viewport，不做上下限 clamp（否则会和原生窗口尺寸打架）。
         cx.observe_window_bounds(window, |this, window, cx| {
             this.main_bounds = window.bounds();
             this.main_scale = window.scale_factor();
@@ -508,7 +510,7 @@ impl UiApp {
                     .w_full()
                     .flex()
                     .flex_col()
-                    .pt(px(10.))
+                    .pt(pxu(10.))
                     .px(px(ROW_INSET))
                     .overflow_hidden()
                     .on_scroll(move |e, _, cx| {
@@ -530,7 +532,7 @@ impl UiApp {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .text_size(px(17.))
+                            .text_size(pxu(17.))
                             .text_color(c(MUTED))
                             .child("没有匹配的剪贴板记录")
                             .into_any_element(),

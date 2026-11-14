@@ -6,7 +6,7 @@ use gpui_kit::assets::{Assets as ComponentAssets, IconName, icon_assets};
 use gpui_kit::component::Icon;
 use gpui_kit::*;
 
-use crate::theme::{Tup, c};
+use crate::theme::{Tup, UI_SCALE, c};
 
 icon_assets!(
     ExtraIcons,
@@ -33,9 +33,11 @@ impl AssetSource for AppAssets {
 }
 
 pub fn icon(name: IconName, size: f32) -> impl IntoElement {
-    Icon::new(name).size(px(size))
+    Icon::new(name).size(px(size * UI_SCALE))
 }
 
 pub fn icon_colored(name: IconName, size: f32, color: Tup) -> impl IntoElement {
-    Icon::new(name).size(px(size)).text_color(c(color))
+    Icon::new(name)
+        .size(px(size * UI_SCALE))
+        .text_color(c(color))
 }

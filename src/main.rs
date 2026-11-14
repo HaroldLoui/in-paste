@@ -29,7 +29,7 @@ fn main() {
         Theme::update(cx, |theme| {
             theme.font_family = "Microsoft YaHei".into();
             theme.mono_font_family = "Consolas".into();
-            theme.font_size = px(16.);
+            theme.font_size = px(16.0 * crate::theme::UI_SCALE);
             // gpui-component RootPlugin 会给根表面刷不透明主题底色，
             // 盖住透明窗口留白 → 置为透明。
             let clear = theme.transparent;

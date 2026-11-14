@@ -48,9 +48,9 @@ pub fn render(
         .h(px(height(pos) - 1.))
         .flex()
         .items_center()
-        .gap(px(14.))
-        .px(px(12.))
-        .rounded(px(14.))
+        .gap(pxu(14.))
+        .px(pxu(12.))
+        .rounded(pxu(14.))
         .when(selected, |d| d.bg(c(SELECT)))
         .hover(|s| s.bg(c(SELECT)))
         .cursor_pointer()
@@ -74,7 +74,7 @@ pub fn render(
             div()
                 .id(SharedString::from(format!("tile-{pos}")))
                 .size(px(TILE))
-                .rounded(px(15.))
+                .rounded(pxu(15.))
                 .bg(c(tile_bg))
                 .flex()
                 .items_center()
@@ -87,20 +87,20 @@ pub fn render(
                 .min_w_0()
                 .flex()
                 .flex_col()
-                .gap(px(4.))
+                .gap(pxu(4.))
                 .child(
                     div()
                         .w_full()
                         .truncate()
-                        .text_size(px(20.))
+                        .text_size(pxu(20.))
                         .text_color(c(INK))
                         .child(item.title),
                 )
                 .child(
                     div()
                         .flex()
-                        .gap(px(8.))
-                        .text_size(px(17.))
+                        .gap(pxu(8.))
+                        .text_size(pxu(17.))
                         .text_color(c(MUTED))
                         .child(item.meta),
                 ),
@@ -112,7 +112,7 @@ pub fn render(
             d.child(
                 div()
                     .flex()
-                    .gap(px(6.))
+                    .gap(pxu(6.))
                     .child(action_btn("copy", IconName::Copy, NAVY, move |cx| {
                         v_copy.update(cx, |this, cx| {
                             this.on_row_action(real, RowAction::Copy, cx);
@@ -159,7 +159,7 @@ fn action_btn(
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(8.))
+        .rounded(pxu(8.))
         .bg(ca((255, 255, 255), 160))
         .cursor_pointer()
         .hover(|s| s.bg(rgb8(255, 255, 255)))

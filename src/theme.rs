@@ -6,47 +6,69 @@
 
 #![allow(dead_code)]
 
-use gpui_kit::Rgba;
+use gpui_kit::{Pixels, Rgba, px};
+
+/// 整体 UI 缩放：在 100% DPI 下把整套设计 token/字号缩到 2/3。
+pub const UI_SCALE: f32 = 2.0 / 3.0;
+
+/// 常量尺寸缩放。
+pub const fn s(value: f32) -> f32 {
+    value * UI_SCALE
+}
+
+/// 字面量像素缩放；1px 级的描边/分隔线保持至少 1px，避免缩放到消失。
+pub fn pxu(value: f32) -> Pixels {
+    let scaled = value * UI_SCALE;
+    if value > 0.0 && value < 2.0 {
+        px(scaled.max(1.0))
+    } else {
+        px(scaled)
+    }
+}
 
 // ---------------------------------------------------------------- 窗口 / 卡片
 
 /// 卡片顶部拖拽带高度（同时是工具栏顶部留白）。
-pub const CARD_TOP_PAD: f32 = 18.0;
+pub const CARD_TOP_PAD: f32 = s(18.0);
 /// 主卡与预览卡之间的间距。
-pub const PREVIEW_GAP: f32 = 20.0;
+pub const PREVIEW_GAP: f32 = s(20.0);
 
-pub const DEFAULT_CARD_W: f32 = 672.0;
-pub const DEFAULT_CARD_H: f32 = 816.0;
-/// 最小卡片宽度：工具栏 5 个 tab(326) + 置顶设置(82) + 左右 padding(60) ≈ 468，
-/// 留一点余量取 500；窗口最小尺寸直接用它。
-pub const MIN_CARD_W: f32 = 500.0;
-pub const MIN_CARD_H: f32 = 420.0;
+/// 卡片在缩放前的设计尺寸：更窄、更高。
+pub const DEFAULT_CARD_W: f32 = 350.0;
+pub const DEFAULT_CARD_H: f32 = 530.0;
+/// 最小卡片宽度：工具栏 5 个 tab + 置顶设置 + 左右 padding 缩放后的下限。
+pub const MIN_CARD_W: f32 = 350.0;
+pub const MIN_CARD_H: f32 = 530.0;
 
-pub const CARD_R: f32 = 20.0;
-pub const PREVIEW_W: f32 = 431.0;
-pub const PREVIEW_H: f32 = 240.0;
-pub const PREVIEW_R: f32 = 18.0;
+/// 主窗拖拽的最大尺寸（最终逻辑像素）；由 WndProc 的 WM_GETMINMAXINFO 限制。
+pub const MAX_CARD_W: f32 = 520.0;
+pub const MAX_CARD_H: f32 = 760.0;
+
+pub const CARD_R: f32 = s(20.0);
+pub const PREVIEW_W: f32 = s(431.0);
+pub const PREVIEW_H: f32 = s(240.0);
+pub const PREVIEW_R: f32 = s(18.0);
 
 // ---------------------------------------------------------------- 列表行
 
-pub const LIST_TOP: f32 = 146.0;
-pub const LIST_BOTTOM_PAD: f32 = 13.0;
-pub const ROW_INSET: f32 = 10.0;
-pub const ROW_H: f32 = 81.0;
-pub const ROW0_H: f32 = 90.0;
-pub const TILE: f32 = 64.0;
-pub const HOVER_BTN: f32 = 34.0;
+pub const LIST_TOP: f32 = s(146.0);
+pub const LIST_BOTTOM_PAD: f32 = s(13.0);
+pub const ROW_INSET: f32 = s(10.0);
+pub const ROW_H: f32 = s(81.0);
+pub const ROW0_H: f32 = s(90.0);
+pub const TILE: f32 = s(64.0);
+pub const HOVER_BTN: f32 = s(34.0);
 
 // ---------------------------------------------------------------- 工具栏
 
-pub const TABS_CY: f32 = 112.0;
-pub const TOOLBAR_PAD_X: f32 = 30.0;
+pub const TABS_CY: f32 = s(112.0);
+pub const TOOLBAR_PAD_X: f32 = s(30.0);
 /// 搜索行与 tabs 行之间的留白（也是拖拽带）。
-pub const TOOLBAR_GAP: f32 = 12.0;
-pub const SEARCH_ROW_H: f32 = 58.0;
-pub const TABS_ROW_H: f32 = 48.0;
-pub const TAB_FIRST: f32 = 44.0;
-pub const TAB_GAP: f32 = 72.0;
+pub const TOOLBAR_GAP: f32 = s(12.0);
+pub const SEARCH_ROW_H: f32 = s(58.0);
+pub const TABS_ROW_H: f32 = s(48.0);
+pub const TAB_FIRST: f32 = s(44.0);
+pub const TAB_GAP: f32 = s(72.0);
 
 // ---------------------------------------------------------------- 颜色助手
 

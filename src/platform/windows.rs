@@ -10,6 +10,8 @@ pub mod win {
     use gpui_kit::Window;
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+    use crate::theme::{MAX_CARD_H, MAX_CARD_W, MIN_CARD_H, MIN_CARD_W};
+
     const GWL_STYLE: i32 = -16;
     const GWL_EXSTYLE: i32 = -20;
     const GWLP_WNDPROC: i32 = -4;
@@ -41,6 +43,7 @@ pub mod win {
 
     const WM_NCCALCSIZE: u32 = 0x0083;
     const WM_NCHITTEST: u32 = 0x0084;
+    const WM_GETMINMAXINFO: u32 = 0x0024;
     const WM_MOUSEACTIVATE: u32 = 0x0021;
     const MA_NOACTIVATE: isize = 3;
     const MONITOR_DEFAULTTONEAREST: u32 = 2;
@@ -77,6 +80,22 @@ pub mod win {
         rc_monitor: WinRect,
         rc_work: WinRect,
         flags: u32,
+    }
+
+    #[repr(C)]
+    struct MinMaxPoint {
+        x: i32,
+        y: i32,
+    }
+
+    /// Win32 `MINMAXINFO`。
+    #[repr(C)]
+    struct MinMaxInfo {
+        reserved: MinMaxPoint,
+        max_size: MinMaxPoint,
+        max_position: MinMaxPoint,
+        min_track: MinMaxPoint,
+        max_track: MinMaxPoint,
     }
 
     #[link(name = "user32")]
@@ -195,6 +214,28 @@ pub mod win {
         wparam: usize,
         lparam: isize,
     ) -> isize {
+        // 主窗拖拽的上下限：WM_GETMINMAXINFO 是系统 sizing loop 真正遵守的地方。
+        // 只在 observe_window_bounds 里 clamp 卡片状态不能阻止原生窗口继续变大。
+        if msg == WM_GETMINMAXINFO && lparam != 0 {
+            let info = unsafe { &mut *(lparam as *mut MinMaxInfo) };
+            let dpi = match unsafe { GetDpiForWindow(hwnd) } {
+                0 => 96,
+                dpi => dpi,
+            } as f32;
+            let scale = dpi / 96.0;
+
+            // ptMinTrackSize / ptMaxTrackSize 是窗口外沿尺寸，而主题里的
+            // MIN_CARD/MAX_CARD 是内容区尺寸。GPUI 的无边框窗口在 100% DPI
+            // 下左右各多 8px、上下各多 4px 的不可见边框。
+            let border_w = (16.0 * scale).round() as i32;
+            let border_h = (8.0 * scale).round() as i32;
+            info.min_track.x = (MIN_CARD_W * scale).round() as i32 + border_w;
+            info.min_track.y = (MIN_CARD_H * scale).round() as i32 + border_h;
+            info.max_track.x = (MAX_CARD_W * scale).round() as i32 + border_w;
+            info.max_track.y = (MAX_CARD_H * scale).round() as i32 + border_h;
+            return 0;
+        }
+
         // 客户区铺满窗口，卡片才能贴边；最大化/全屏时交回默认处理。
         if msg == WM_NCCALCSIZE && wparam != 0 && unsafe { IsZoomed(hwnd) } == 0 {
             return 0;

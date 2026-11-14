@@ -22,9 +22,9 @@ fn render(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
         .h_full()
         .flex()
         .flex_col()
-        .px(px(30.))
-        .pt(px(32.))
-        .pb(px(24.))
+        .px(pxu(30.))
+        .pt(pxu(32.))
+        .pb(pxu(24.))
         .child(
             div()
                 .flex()
@@ -34,17 +34,17 @@ fn render(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
                     div()
                         .flex()
                         .flex_col()
-                        .gap(px(6.))
+                        .gap(pxu(6.))
                         .child(
                             div()
-                                .text_size(px(24.))
+                                .text_size(pxu(24.))
                                 .font_weight(FontWeight::BOLD)
                                 .text_color(c(INK))
                                 .child("设置"),
                         )
                         .child(
                             div()
-                                .text_size(px(16.))
+                                .text_size(pxu(16.))
                                 .text_color(c(MUTED))
                                 .child("in-paste · UI 原型 v0.2"),
                         ),
@@ -54,10 +54,10 @@ fn render(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
                         .id("btn-back")
                         .flex()
                         .items_center()
-                        .gap(px(6.))
-                        .h(px(34.))
-                        .px(px(14.))
-                        .rounded(px(9.))
+                        .gap(pxu(6.))
+                        .h(pxu(34.))
+                        .px(pxu(14.))
+                        .rounded(pxu(9.))
                         .bg(c(TILE_NORMAL))
                         .cursor_pointer()
                         .hover(|s| s.bg(c(PILL)))
@@ -69,31 +69,31 @@ fn render(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
                             });
                         })
                         .child(icons::icon_colored(IconName::ChevronLeft, 16., BODY))
-                        .child(div().text_size(px(16.)).text_color(c(BODY)).child("返回")),
+                        .child(div().text_size(pxu(16.)).text_color(c(BODY)).child("返回")),
                 ),
         )
-        .child(div().mt(px(16.)).w_full().h(px(1.)).bg(c(DIVIDER)))
+        .child(div().mt(pxu(16.)).w_full().h(pxu(1.)).bg(c(DIVIDER)))
         .child(
             div()
-                .mt(px(24.))
+                .mt(pxu(24.))
                 .flex()
                 .items_center()
                 .justify_between()
                 .child(
                     div()
-                        .text_size(px(20.))
+                        .text_size(pxu(20.))
                         .text_color(c(BODY))
                         .child("呼出面板"),
                 )
                 .child(
                     div()
-                        .h(px(40.))
-                        .px(px(16.))
+                        .h(pxu(40.))
+                        .px(pxu(16.))
                         .flex()
                         .items_center()
-                        .rounded(px(10.))
+                        .rounded(pxu(10.))
                         .bg(c(SEARCH_BG))
-                        .text_size(px(17.))
+                        .text_size(pxu(17.))
                         .text_color(c(INK))
                         .child("Ctrl + Shift + V"),
                 ),
@@ -101,23 +101,23 @@ fn render(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
         // 开关行由调用方注入状态（避免 render 内 read 自己）
         .child(
             div()
-                .mt(px(24.))
+                .mt(pxu(24.))
                 .flex()
                 .flex_col()
-                .gap(px(8.))
+                .gap(pxu(8.))
                 .id("switches"),
         )
-        .child(div().mt(px(20.)).w_full().h(px(1.)).bg(c(DIVIDER)))
+        .child(div().mt(pxu(20.)).w_full().h(pxu(1.)).bg(c(DIVIDER)))
         .child(
             div()
                 .id("btn-exit")
-                .mt(px(16.))
+                .mt(pxu(16.))
                 .w_full()
-                .h(px(52.))
+                .h(pxu(52.))
                 .flex()
                 .items_center()
-                .px(px(16.))
-                .rounded(px(12.))
+                .px(pxu(16.))
+                .rounded(pxu(12.))
                 .cursor_pointer()
                 .hover(|s| s.bg(c(TILE_NORMAL)))
                 .on_click(move |_, _, cx| {
@@ -126,7 +126,7 @@ fn render(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
                 })
                 .child(
                     div()
-                        .text_size(px(20.))
+                        .text_size(pxu(20.))
                         .text_color(c(RED))
                         .child("退出 in-paste"),
                 ),
@@ -134,7 +134,7 @@ fn render(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
         .child(
             div()
                 .mt_auto()
-                .text_size(px(15.))
+                .text_size(pxu(15.))
                 .text_color(c(MUTED))
                 .child("按 Esc 返回列表 · 点击卡片外会隐藏面板"),
         )
@@ -162,42 +162,42 @@ pub fn render_with_state(
         .h_full()
         .flex()
         .flex_col()
-        .px(px(30.))
-        .pt(px(32.))
-        .pb(px(24.))
+        .px(pxu(30.))
+        .pt(pxu(32.))
+        .pb(pxu(24.))
         .child(header(view))
-        .child(div().mt(px(16.)).w_full().h(px(1.)).bg(c(DIVIDER)))
+        .child(div().mt(pxu(16.)).w_full().h(pxu(1.)).bg(c(DIVIDER)))
         .child(
             div()
-                .mt(px(24.))
+                .mt(pxu(24.))
                 .flex()
                 .items_center()
                 .justify_between()
                 .child(
                     div()
-                        .text_size(px(20.))
+                        .text_size(pxu(20.))
                         .text_color(c(BODY))
                         .child("呼出面板"),
                 )
                 .child(
                     div()
-                        .h(px(40.))
-                        .px(px(16.))
+                        .h(pxu(40.))
+                        .px(pxu(16.))
                         .flex()
                         .items_center()
-                        .rounded(px(10.))
+                        .rounded(pxu(10.))
                         .bg(c(SEARCH_BG))
-                        .text_size(px(17.))
+                        .text_size(pxu(17.))
                         .text_color(c(INK))
                         .child("Ctrl + Shift + V"),
                 ),
         )
         .child(
             div()
-                .mt(px(24.))
+                .mt(pxu(24.))
                 .flex()
                 .flex_col()
-                .gap(px(8.))
+                .gap(pxu(8.))
                 .child(switch_row(
                     "auto-hide",
                     "失焦时自动隐藏",
@@ -221,12 +221,12 @@ pub fn render_with_state(
                     },
                 )),
         )
-        .child(div().mt(px(20.)).w_full().h(px(1.)).bg(c(DIVIDER)))
+        .child(div().mt(pxu(20.)).w_full().h(pxu(1.)).bg(c(DIVIDER)))
         .child(exit_row(view))
         .child(
             div()
                 .mt_auto()
-                .text_size(px(15.))
+                .text_size(pxu(15.))
                 .text_color(c(MUTED))
                 .child("按 Esc 返回列表 · 点击卡片外会隐藏面板"),
         )
@@ -242,17 +242,17 @@ fn header(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(6.))
+                .gap(pxu(6.))
                 .child(
                     div()
-                        .text_size(px(24.))
+                        .text_size(pxu(24.))
                         .font_weight(FontWeight::BOLD)
                         .text_color(c(INK))
                         .child("设置"),
                 )
                 .child(
                     div()
-                        .text_size(px(16.))
+                        .text_size(pxu(16.))
                         .text_color(c(MUTED))
                         .child("in-paste · UI 原型 v0.2"),
                 ),
@@ -261,10 +261,10 @@ fn header(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
             no_drag_div("btn-back")
                 .flex()
                 .items_center()
-                .gap(px(6.))
-                .h(px(34.))
-                .px(px(14.))
-                .rounded(px(9.))
+                .gap(pxu(6.))
+                .h(pxu(34.))
+                .px(pxu(14.))
+                .rounded(pxu(9.))
                 .bg(c(TILE_NORMAL))
                 .cursor_pointer()
                 .hover(|s| s.bg(c(PILL)))
@@ -276,20 +276,20 @@ fn header(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
                     });
                 })
                 .child(icons::icon_colored(IconName::ChevronLeft, 16., BODY))
-                .child(div().text_size(px(16.)).text_color(c(BODY)).child("返回")),
+                .child(div().text_size(pxu(16.)).text_color(c(BODY)).child("返回")),
         )
 }
 
 fn exit_row(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
     let v_exit = view.clone();
     no_drag_div("btn-exit")
-        .mt(px(16.))
+        .mt(pxu(16.))
         .w_full()
-        .h(px(52.))
+        .h(pxu(52.))
         .flex()
         .items_center()
-        .px(px(16.))
-        .rounded(px(12.))
+        .px(pxu(16.))
+        .rounded(pxu(12.))
         .cursor_pointer()
         .hover(|s| s.bg(c(TILE_NORMAL)))
         .on_click(move |_, _, cx| {
@@ -298,7 +298,7 @@ fn exit_row(view: &Entity<crate::ui::app::UiApp>) -> impl IntoElement {
         })
         .child(
             div()
-                .text_size(px(20.))
+                .text_size(pxu(20.))
                 .text_color(c(RED))
                 .child("退出 in-paste"),
         )
@@ -313,35 +313,35 @@ fn switch_row(
     let label = label.to_owned();
     no_drag_div(SharedString::from(format!("switch-{id}")))
         .w_full()
-        .h(px(52.))
+        .h(pxu(52.))
         .flex()
         .items_center()
         .justify_between()
-        .px(px(6.))
-        .rounded(px(10.))
+        .px(pxu(6.))
+        .rounded(pxu(10.))
         .cursor_pointer()
         .hover(|s| s.bg(c(TILE_NORMAL)))
         .on_click(move |_, _, cx| {
             cx.stop_propagation();
             on_toggle(cx);
         })
-        .child(div().text_size(px(20.)).text_color(c(BODY)).child(label))
+        .child(div().text_size(pxu(20.)).text_color(c(BODY)).child(label))
         .child(switch_track(on))
 }
 
 fn switch_track(on: bool) -> impl IntoElement {
     let track = div()
-        .w(px(52.))
-        .h(px(30.))
-        .rounded(px(15.))
+        .w(pxu(52.))
+        .h(pxu(30.))
+        .rounded(pxu(15.))
         .bg(if on { c(SWITCH_ON) } else { c(SWITCH_OFF) })
         .flex()
         .items_center()
-        .px(px(4.));
+        .px(pxu(4.));
     let track = if on {
         track.justify_end()
     } else {
         track.justify_start()
     };
-    track.child(div().size(px(22.)).rounded_full().bg(rgb8(255, 255, 255)))
+    track.child(div().size(pxu(22.)).rounded_full().bg(rgb8(255, 255, 255)))
 }

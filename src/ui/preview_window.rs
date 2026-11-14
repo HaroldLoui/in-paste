@@ -1,7 +1,7 @@
 //! 独立预览窗口：主窗口之外的第二个原生窗口。
 //!
 //! 这个窗口只负责显示当前选中的记录，不接收交互；定位、owner、cloak 由
-//! `platform::windows` 负责。窗口四周留一圈透明边给 `preview` 的阴影。
+//! `platform::windows` 负责。窗口四周留一圈透明边给 `preview` 的阴影和箭头。
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -14,8 +14,8 @@ use crate::ui::preview;
 pub const PREVIEW_MARGIN: f32 = 24.0;
 /// 预览窗口与屏幕边缘保留的距离。
 pub const PREVIEW_SCREEN_MARGIN: f32 = 8.0;
-/// 左侧放置时额外让出的距离，避开主窗不可见边框，保证箭头完整。
-pub const PREVIEW_LEFT_EXTRA: f32 = 8.0;
+/// 预览窗在左侧时，卡片在窗内额外左移一点，给右侧箭头留空间。
+const PREVIEW_LEFT_CARD_X: f32 = 16.0;
 pub const PREVIEW_WIN_W: f32 = PREVIEW_W + PREVIEW_MARGIN * 2.0;
 pub const PREVIEW_WIN_H: f32 = PREVIEW_H + PREVIEW_MARGIN * 2.0;
 
@@ -50,36 +50,41 @@ impl PreviewWindow {
 }
 
 impl Render for PreviewWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read(cx);
         let item = state.item;
         let side = state.side;
+        let content_h = f32::from(window.viewport_size().height);
+        let card_x = match side {
+            PreviewSide::Right => PREVIEW_MARGIN,
+            PreviewSide::Left => PREVIEW_LEFT_CARD_X,
+        };
 
         div()
             .size_full()
             .flex()
             .items_center()
-            .justify_center()
+            .pl(px(card_x))
             .when_some(item, |this, item| this.child(preview::render(item)))
-            .child(arrow(side))
+            .child(deferred(arrow(side, card_x, content_h)))
     }
 }
 
-/// 画在透明留白里的三角箭头，尖端贴着主窗，底边贴着预览卡。
-fn arrow(side: PreviewSide) -> AnyElement {
+/// 画在透明留白里的三角箭头，尖端朝主窗，底边贴着预览卡。
+fn arrow(side: PreviewSide, card_x: f32, content_h: f32) -> AnyElement {
     canvas(
         |_, _, _| {},
         move |bounds, _, window, _| {
             let window_x = f32::from(bounds.origin.x);
             let window_y = f32::from(bounds.origin.y);
-            let center_y = window_y + PREVIEW_MARGIN + PREVIEW_H / 2.0;
-            let card_left = window_x + PREVIEW_MARGIN;
-            let card_right = window_x + PREVIEW_MARGIN + PREVIEW_W;
+            let center_y = window_y + content_h / 2.0;
+            let card_left = window_x + card_x;
+            let card_right = card_left + PREVIEW_W;
             let half = 18.0;
 
             let (tip_x, base_x) = match side {
-                PreviewSide::Right => (window_x + 4.0, card_left + 1.0),
-                PreviewSide::Left => (window_x + PREVIEW_WIN_W - 4.0, card_right - 1.0),
+                PreviewSide::Right => (card_left - 20.0, card_left - 1.0),
+                PreviewSide::Left => (card_right + 20.0, card_right - 1.0),
             };
 
             let mut path = PathBuilder::fill();

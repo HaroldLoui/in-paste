@@ -14,6 +14,8 @@ use crate::ui::preview;
 pub const PREVIEW_MARGIN: f32 = 24.0;
 /// 预览窗口与屏幕边缘保留的距离。
 pub const PREVIEW_SCREEN_MARGIN: f32 = 8.0;
+/// 左侧放置时额外让出的距离，避开主窗不可见边框，保证箭头完整。
+pub const PREVIEW_LEFT_EXTRA: f32 = 8.0;
 pub const PREVIEW_WIN_W: f32 = PREVIEW_W + PREVIEW_MARGIN * 2.0;
 pub const PREVIEW_WIN_H: f32 = PREVIEW_H + PREVIEW_MARGIN * 2.0;
 

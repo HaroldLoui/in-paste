@@ -12,8 +12,8 @@ use crate::core::{self, Item};
 use crate::platform::{self, Tray, TrayAction, windows::win};
 use crate::theme::*;
 use crate::ui::preview_window::{
-    PREVIEW_MARGIN, PREVIEW_SCREEN_MARGIN, PREVIEW_WIN_H, PREVIEW_WIN_W, PreviewSide, PreviewState,
-    PreviewWindow,
+    PREVIEW_LEFT_EXTRA, PREVIEW_MARGIN, PREVIEW_SCREEN_MARGIN, PREVIEW_WIN_H, PREVIEW_WIN_W,
+    PreviewSide, PreviewState, PreviewWindow,
 };
 use crate::ui::{drag_zone, row, settings, toolbar};
 
@@ -147,7 +147,9 @@ impl UiApp {
 
         let y = content_y + row_top + row_h / 2.0 - PREVIEW_H / 2.0 - PREVIEW_MARGIN;
         let right_x = content_x + self.card_w + PREVIEW_GAP - PREVIEW_MARGIN;
-        let left_x = content_x - PREVIEW_GAP + PREVIEW_MARGIN - PREVIEW_WIN_W;
+        // 左置时预览窗口右缘会压到主窗的不可见边框，箭头尖被主窗盖住；
+        // 再往左让出一点，让整个三角完整露出来。
+        let left_x = content_x - PREVIEW_GAP + PREVIEW_MARGIN - PREVIEW_WIN_W - PREVIEW_LEFT_EXTRA;
 
         // 右侧放得下就放右侧；放不下且左侧放得下就放左侧。
         // 两边都不够时选空间更大的一边（极端情况下仍可能压到主窗或屏幕边）。

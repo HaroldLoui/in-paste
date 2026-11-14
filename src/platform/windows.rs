@@ -13,6 +13,7 @@ pub mod win {
     const GWL_STYLE: i32 = -16;
     const GWL_EXSTYLE: i32 = -20;
     const GWLP_WNDPROC: i32 = -4;
+    const GWLP_HWNDPARENT: i32 = -8;
 
     const WS_CAPTION: isize = 0x00C0_0000;
     const WS_THICKFRAME: isize = 0x0004_0000;
@@ -22,6 +23,7 @@ pub mod win {
 
     const WS_EX_TOOLWINDOW: isize = 0x0000_0080;
     const WS_EX_APPWINDOW: isize = 0x0004_0000;
+    const WS_EX_NOACTIVATE: isize = 0x0800_0000;
 
     const SWP_NOSIZE: u32 = 0x0001;
     const SWP_NOMOVE: u32 = 0x0002;
@@ -39,6 +41,9 @@ pub mod win {
 
     const WM_NCCALCSIZE: u32 = 0x0083;
     const WM_NCHITTEST: u32 = 0x0084;
+    const WM_MOUSEACTIVATE: u32 = 0x0021;
+    const MA_NOACTIVATE: isize = 3;
+    const MONITOR_DEFAULTTONEAREST: u32 = 2;
 
     const HTLEFT: isize = 10;
     const HTRIGHT: isize = 11;
@@ -54,6 +59,9 @@ pub mod win {
 
     /// 子类化前 GPUI 的窗口过程。
     static OLD_WNDPROC: AtomicIsize = AtomicIsize::new(0);
+    /// 预览窗口自己的旧窗口过程；预览是第二个 hwnd，不能复用主窗的静态。
+    static PREVIEW_OLD_WNDPROC: AtomicIsize = AtomicIsize::new(0);
+    static PREVIEW_HWND: AtomicIsize = AtomicIsize::new(0);
 
     #[repr(C)]
     struct WinRect {
@@ -61,6 +69,14 @@ pub mod win {
         top: i32,
         right: i32,
         bottom: i32,
+    }
+
+    #[repr(C)]
+    struct MonitorInfo {
+        cb_size: u32,
+        rc_monitor: WinRect,
+        rc_work: WinRect,
+        flags: u32,
     }
 
     #[link(name = "user32")]
@@ -94,6 +110,8 @@ pub mod win {
         fn GetWindowRect(hwnd: isize, rect: *mut WinRect) -> i32;
         fn GetDpiForWindow(hwnd: isize) -> u32;
         fn IsZoomed(hwnd: isize) -> i32;
+        fn MonitorFromWindow(hwnd: isize, flags: u32) -> isize;
+        fn GetMonitorInfoW(monitor: isize, info: *mut MonitorInfo) -> i32;
     }
 
     #[link(name = "dwmapi")]
@@ -127,6 +145,48 @@ pub mod win {
         }
         OLD_WNDPROC.store(old, Ordering::Relaxed);
         true
+    }
+
+    /// 预览窗口的窗口过程：只拦 `WM_MOUSEACTIVATE`，其余原样转发给 GPUI。
+    ///
+    /// GPUI 的 Windows 事件层对 `WM_MOUSEACTIVATE` 统一返回 `MA_ACTIVATE`，
+    /// 所以只设 `WS_EX_NOACTIVATE` 不够；点击预览窗仍会把焦点抢走。
+    fn install_preview_wndproc(hwnd: isize) -> bool {
+        if PREVIEW_HWND.load(Ordering::Relaxed) == hwnd {
+            return true;
+        }
+        let old = unsafe {
+            SetWindowLongPtrW(
+                hwnd,
+                GWLP_WNDPROC,
+                preview_wndproc as *const () as usize as isize,
+            )
+        };
+        if old == 0 {
+            return false;
+        }
+        PREVIEW_OLD_WNDPROC.store(old, Ordering::Relaxed);
+        PREVIEW_HWND.store(hwnd, Ordering::Relaxed);
+        true
+    }
+
+    unsafe extern "system" fn preview_wndproc(
+        hwnd: isize,
+        msg: u32,
+        wparam: usize,
+        lparam: isize,
+    ) -> isize {
+        if msg == WM_MOUSEACTIVATE {
+            return MA_NOACTIVATE;
+        }
+        let old = PREVIEW_OLD_WNDPROC.load(Ordering::Relaxed);
+        unsafe {
+            if old == 0 {
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            } else {
+                CallWindowProcW(old, hwnd, msg, wparam, lparam)
+            }
+        }
     }
 
     unsafe extern "system" fn resize_wndproc(
@@ -284,6 +344,71 @@ pub mod win {
         }
     }
 
+    /// 预览窗口的样式：不进任务栏、不抢激活、owner 指向主窗，并清掉 PopUp 的 topmost。
+    pub fn prepare_preview(hwnd: isize, owner: isize) {
+        unsafe {
+            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let next = (ex | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) & !WS_EX_APPWINDOW;
+            if next != ex {
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next);
+            }
+            if owner != 0 {
+                SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, owner);
+            }
+            // 不画窗口自己的 NC 边框/阴影；预览卡的阴影由 view 自己画。
+            let policy: u32 = 1; // DWMNCRP_DISABLED
+            DwmSetWindowAttribute(hwnd, 2, &policy, size_of::<u32>() as u32);
+            SetWindowPos(
+                hwnd,
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
+        }
+    }
+
+    /// 预览窗口创建完成后补装窗口过程；用来覆盖 GPUI 对 `WM_MOUSEACTIVATE` 的处理。
+    pub fn fix_preview_activation(hwnd: isize) {
+        install_preview_wndproc(hwnd);
+    }
+
+    /// 主窗所在显示器的工作区，转换成逻辑坐标 `(left, top, right, bottom)`。
+    pub fn work_area(hwnd: isize, scale: f32) -> Option<(f32, f32, f32, f32)> {
+        unsafe {
+            let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if monitor == 0 {
+                return None;
+            }
+            let mut info: MonitorInfo = std::mem::zeroed();
+            info.cb_size = size_of::<MonitorInfo>() as u32;
+            if GetMonitorInfoW(monitor, &mut info) == 0 {
+                return None;
+            }
+            let scale = if scale > 0.0 { scale } else { 1.0 };
+            let rect = info.rc_work;
+            Some((
+                rect.left as f32 / scale,
+                rect.top as f32 / scale,
+                rect.right as f32 / scale,
+                rect.bottom as f32 / scale,
+            ))
+        }
+    }
+
+    /// 把逻辑坐标/尺寸换算成物理像素，移动并缩放预览窗口。
+    pub fn move_window(hwnd: isize, x: f32, y: f32, width: f32, height: f32, scale: f32) {
+        let x = (x * scale).round() as i32;
+        let y = (y * scale).round() as i32;
+        let width = (width * scale).round() as i32;
+        let height = (height * scale).round() as i32;
+        unsafe {
+            SetWindowPos(hwnd, 0, x, y, width, height, SWP_NOACTIVATE | SWP_NOZORDER);
+        }
+    }
+
     pub fn set_topmost(hwnd: isize, on: bool) {
         unsafe {
             SetWindowPos(
@@ -336,6 +461,12 @@ pub mod win {
         None
     }
     pub fn set_cloaked(_: isize, _: bool) {}
+    pub fn prepare_preview(_: isize, _: isize) {}
+    pub fn fix_preview_activation(_: isize) {}
+    pub fn move_window(_: isize, _: f32, _: f32, _: f32, _: f32, _: f32) {}
+    pub fn work_area(_: isize, _: f32) -> Option<(f32, f32, f32, f32)> {
+        None
+    }
     pub fn set_topmost(_: isize, _: bool) {}
     pub fn foreground() -> isize {
         0

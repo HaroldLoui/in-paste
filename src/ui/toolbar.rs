@@ -90,7 +90,7 @@ pub fn render(
                                 .on_click(move |_, _, cx| {
                                     cx.stop_propagation();
                                     v.update(cx, |this, cx| {
-                                        this.set_tab(i);
+                                        this.set_tab(i, cx);
                                         cx.notify();
                                     });
                                 })
@@ -126,7 +126,7 @@ pub fn render(
                         }))
                         .child(icon_btn("settings", IconName::Settings, false, move |cx| {
                             v_settings.update(cx, |this, cx| {
-                                this.open_settings();
+                                this.open_settings(cx);
                                 cx.notify();
                             });
                         })),

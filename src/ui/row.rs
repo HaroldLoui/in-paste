@@ -64,10 +64,10 @@ pub fn render(
                 cx.notify();
             });
         })
-        .on_click(move |_, _, cx| {
+        .on_click(move |_, window, cx| {
             cx.stop_propagation();
             v_select.update(cx, |this, cx| {
-                this.on_row_select(pos, cx);
+                this.on_row_select(pos, window, cx);
             });
         })
         .child(

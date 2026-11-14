@@ -11,7 +11,11 @@ use gpui_kit::*;
 use crate::core::{self, Item};
 use crate::platform::{self, Tray, TrayAction, windows::win};
 use crate::theme::*;
-use crate::ui::{drag_zone, preview, row, settings, toolbar};
+use crate::ui::preview_window::{
+    PREVIEW_MARGIN, PREVIEW_SCREEN_MARGIN, PREVIEW_WIN_H, PREVIEW_WIN_W, PreviewSide, PreviewState,
+    PreviewWindow,
+};
+use crate::ui::{drag_zone, row, settings, toolbar};
 
 actions!(in_paste, [MoveUp, MoveDown, Escape, FocusSearch,]);
 
@@ -36,21 +40,24 @@ pub struct UiApp {
     /// 工具栏/设置页「置顶」开关；true 时调 win32 topmost（调试用）。
     pinned: bool,
     auto_hide: bool,
+    preview_state: Entity<PreviewState>,
+    preview_window: Option<isize>,
+    main_bounds: Bounds<Pixels>,
+    main_scale: f32,
+    main_hwnd: isize,
     _tray: Option<Tray>,
 }
 
 impl UiApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("搜索剪贴板...")
-                .clean_on_escape()
-        });
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("搜索剪贴板..."));
+        let preview_state = cx.new(|_| PreviewState::default());
 
         cx.subscribe_in(&search, window, |this, _state, event, _, cx| {
             if matches!(event, InputEvent::Change) {
                 this.selected = None;
                 this.scroll = 0.0;
+                this.refresh_preview(cx);
                 cx.notify();
             }
         })
@@ -69,12 +76,18 @@ impl UiApp {
             card_h: DEFAULT_CARD_H,
             pinned: false,
             auto_hide: true,
+            preview_state,
+            preview_window: None,
+            main_bounds: window.bounds(),
+            main_scale: window.scale_factor(),
+            main_hwnd: win::hwnd_of(window).unwrap_or(0),
             _tray: platform::tray::install(),
         };
 
-        // 窗口是权威尺寸；卡片跟随 viewport。预览卡暂不参与尺寸推导，
-        // 后续会改成 popover，不在这里耦合。
+        // 主窗口尺寸/位置是权威；卡片跟随 viewport，预览窗口跟随卡片和选中行。
         cx.observe_window_bounds(window, |this, window, cx| {
+            this.main_bounds = window.bounds();
+            this.main_scale = window.scale_factor();
             let viewport = window.viewport_size();
             let next_w = f32::from(viewport.width).max(MIN_CARD_W);
             let next_h = f32::from(viewport.height).max(MIN_CARD_H);
@@ -83,14 +96,11 @@ impl UiApp {
                 this.card_h = next_h;
                 cx.notify();
             }
+            this.refresh_preview(cx);
         })
         .detach();
 
         view
-    }
-
-    fn expanded(&self) -> bool {
-        self.view == View::List && self.selected.is_some()
     }
 
     fn query(&self, cx: &App) -> String {
@@ -107,12 +117,169 @@ impl UiApp {
         visible
     }
 
+    fn selected_item(&self, cx: &App) -> Option<Item> {
+        if self.view != View::List {
+            return None;
+        }
+        let pos = self.selected?;
+        let query = self.query(cx);
+        let visible = self.visible(&query);
+        visible.get(pos).map(|&real| self.items[real])
+    }
+
+    /// 选中行在卡片内的逻辑位置，以及预览窗口的左上角/相对主窗的位置。
+    fn preview_placement(&self, pos: usize) -> (f32, f32, PreviewSide) {
+        let row_h = row::height(pos) - 1.0;
+        let row_top = LIST_TOP
+            + if pos == 0 {
+                0.0
+            } else {
+                (ROW0_H - 1.0) + (pos as f32 - 1.0) * (ROW_H - 1.0)
+            }
+            - self.scroll;
+
+        // 主窗 window bounds 可能包含不可见的 DWM 边框；用 viewport 和卡片尺寸差
+        // 估一个内容区原点，避免预览跟着边框偏移。
+        let inset_x = ((f32::from(self.main_bounds.size.width) - self.card_w) / 2.0).max(0.0);
+        let inset_y = ((f32::from(self.main_bounds.size.height) - self.card_h) / 2.0).max(0.0);
+        let content_x = f32::from(self.main_bounds.origin.x) + inset_x;
+        let content_y = f32::from(self.main_bounds.origin.y) + inset_y;
+
+        let y = content_y + row_top + row_h / 2.0 - PREVIEW_H / 2.0 - PREVIEW_MARGIN;
+        let right_x = content_x + self.card_w + PREVIEW_GAP - PREVIEW_MARGIN;
+        let left_x = content_x - PREVIEW_GAP + PREVIEW_MARGIN - PREVIEW_WIN_W;
+
+        // 右侧放得下就放右侧；放不下且左侧放得下就放左侧。
+        // 两边都不够时选空间更大的一边（极端情况下仍可能压到主窗或屏幕边）。
+        let mut side = PreviewSide::Right;
+        if let Some((work_left, _, work_right, _)) = win::work_area(self.main_hwnd, self.main_scale)
+        {
+            let fits_right = right_x + PREVIEW_WIN_W + PREVIEW_SCREEN_MARGIN <= work_right;
+            let fits_left = left_x >= work_left + PREVIEW_SCREEN_MARGIN;
+            if !fits_right && fits_left {
+                side = PreviewSide::Left;
+            } else if !fits_right && !fits_left {
+                let right_space = work_right - (right_x + PREVIEW_WIN_W);
+                let left_space = left_x - work_left;
+                if left_space > right_space {
+                    side = PreviewSide::Left;
+                }
+            }
+        }
+
+        let x = match side {
+            PreviewSide::Right => right_x,
+            PreviewSide::Left => left_x,
+        };
+        (x, y, side)
+    }
+
+    fn create_preview_window(&mut self, cx: &mut Context<Self>, x: f32, y: f32) -> Option<isize> {
+        let state = self.preview_state.clone();
+        let owner = self.main_hwnd;
+        let options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                point(px(x), px(y)),
+                size(px(PREVIEW_WIN_W), px(PREVIEW_WIN_H)),
+            ))),
+            titlebar: None,
+            focus: false,
+            show: true,
+            kind: WindowKind::PopUp,
+            is_movable: false,
+            is_resizable: false,
+            is_minimizable: false,
+            window_background: WindowBackgroundAppearance::Transparent,
+            ..Default::default()
+        };
+
+        let opened = open_window(options, cx, move |window, cx| {
+            let view = cx.new(|cx| PreviewWindow::new(state.clone(), cx));
+            if let Some(hwnd) = win::hwnd_of(window) {
+                // 先藏起来；exstyle/owner 在创建阶段完成，WndProc 在创建后再补装。
+                win::prepare_preview(hwnd, owner);
+                win::set_cloaked(hwnd, true);
+            }
+            view
+        });
+
+        let (handle, _view) = match opened {
+            Ok(opened) => opened,
+            Err(err) => {
+                eprintln!("[in-paste] preview window failed: {err:#}");
+                return None;
+            }
+        };
+        let hwnd = match handle.update(cx, |_, window, _| win::hwnd_of(window)) {
+            Ok(Some(hwnd)) => hwnd,
+            _ => {
+                let _ = handle.update(cx, |_, window, _| window.remove_window());
+                return None;
+            }
+        };
+        // GPUI 已经在 Windows 事件层把 WM_MOUSEACTIVATE 固定成 MA_ACTIVATE，
+        // 必须在窗口创建完成后子类化，才能让点击预览不抢焦点。
+        win::fix_preview_activation(hwnd);
+        win::set_cloaked(hwnd, true);
+        self.preview_window = Some(hwnd);
+        Some(hwnd)
+    }
+
+    /// 启动时预创建预览窗口并 cloak，避免第一次选中时再走窗口创建。
+    pub fn precreate_preview(&mut self, cx: &mut Context<Self>) {
+        if self.preview_window.is_some_and(win::is_window) {
+            return;
+        }
+        let (x, y, _) = self.preview_placement(0);
+        let _ = self.create_preview_window(cx, x, y);
+    }
+
+    fn ensure_preview_window(&mut self, cx: &mut Context<Self>) -> Option<isize> {
+        if let Some(hwnd) = self.preview_window
+            && win::is_window(hwnd)
+        {
+            return Some(hwnd);
+        }
+        self.preview_window = None;
+        let pos = self.selected?;
+        let (x, y, _) = self.preview_placement(pos);
+        self.create_preview_window(cx, x, y)
+    }
+
+    fn refresh_preview(&mut self, cx: &mut Context<Self>) {
+        let Some(item) = self.selected_item(cx) else {
+            if let Some(hwnd) = self.preview_window {
+                win::set_cloaked(hwnd, true);
+            }
+            return;
+        };
+        let Some(hwnd) = self.ensure_preview_window(cx) else {
+            return;
+        };
+        let Some(pos) = self.selected else {
+            return;
+        };
+        let (x, y, side) = self.preview_placement(pos);
+
+        self.preview_state.update(cx, |state, cx| {
+            if state.item != Some(item) || state.side != side {
+                state.item = Some(item);
+                state.side = side;
+                cx.notify();
+            }
+        });
+        win::move_window(hwnd, x, y, PREVIEW_WIN_W, PREVIEW_WIN_H, self.main_scale);
+        win::set_cloaked(hwnd, false);
+        win::set_topmost(hwnd, self.pinned);
+    }
+
     // ---------------------------------------------------------------- 动作（供 toolbar/row/settings 调用）
 
-    pub fn set_tab(&mut self, tab: usize) {
+    pub fn set_tab(&mut self, tab: usize, cx: &mut Context<Self>) {
         self.tab = tab;
         self.selected = None;
         self.scroll = 0.0;
+        self.refresh_preview(cx);
     }
 
     /// 置顶开关：翻转 UI 状态并调 win32 topmost（调试期保留）。
@@ -125,11 +292,15 @@ impl UiApp {
                 win::set_topmost(hwnd, pinned);
             }
         });
+        if let Some(hwnd) = self.preview_window {
+            win::set_topmost(hwnd, pinned);
+        }
     }
 
-    pub fn open_settings(&mut self) {
+    pub fn open_settings(&mut self, cx: &mut Context<Self>) {
         self.view = View::Settings;
         self.selected = None;
+        self.refresh_preview(cx);
     }
 
     pub fn back_to_list(&mut self) {
@@ -141,17 +312,21 @@ impl UiApp {
     }
 
     pub fn exit(&mut self, cx: &mut Context<Self>) {
-        let handle = self.window;
-        let _ = handle.update(cx, |_, window, _| window.remove_window());
+        // 现在是两个原生窗口（主窗 + 预览窗），单独 remove 主窗会把预览窗留下；
+        // 退出走应用级 quit，让 GPUI 一并关闭所有窗口。
+        cx.quit();
     }
 
-    pub fn on_row_select(&mut self, pos: usize, cx: &mut Context<Self>) {
+    pub fn on_row_select(&mut self, pos: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.selected = if self.selected == Some(pos) {
             None
         } else {
             Some(pos)
         };
-        // 预览卡暂不参与窗口尺寸（后续会换成 popover），这里只刷新选中态。
+        self.refresh_preview(cx);
+        // 选中行后把键盘焦点留在搜索框：预览窗口是 no-activate 的，
+        // 不会抢焦点；这里保持“选中后继续输入搜索”的手感。
+        self.search.update(cx, |state, cx| state.focus(window, cx));
         cx.notify();
     }
 
@@ -161,6 +336,7 @@ impl UiApp {
             row::RowAction::Copy | row::RowAction::Pin | row::RowAction::Delete => {
                 // 业务后接：复制到剪贴板 / 置顶排序 / 删除记录
                 self.selected = None;
+                self.refresh_preview(cx);
                 cx.notify();
             }
         }
@@ -183,6 +359,8 @@ impl UiApp {
         };
         self.selected = Some(next as usize);
         self.ensure_visible(next as usize);
+        self.refresh_preview(cx);
+        self.focus_search(cx);
         cx.notify();
     }
 
@@ -230,6 +408,7 @@ impl UiApp {
                 // 无查询且无选中：UI 阶段不隐藏面板（业务后接）
             }
         }
+        self.refresh_preview(cx);
     }
 
     fn focus_search(&mut self, cx: &mut Context<Self>) {
@@ -264,6 +443,7 @@ impl UiApp {
             TrayAction::Settings => {
                 self.view = View::Settings;
                 self.selected = None;
+                self.refresh_preview(cx);
                 cx.notify();
             }
             TrayAction::Quit => self.exit(cx),
@@ -281,7 +461,6 @@ impl UiApp {
             self.selected = None;
         }
         let selected = self.selected;
-        let expanded = self.expanded();
         let pinned = self.pinned;
         let auto_hide = self.auto_hide;
         let tab = self.tab;
@@ -339,6 +518,7 @@ impl UiApp {
                         };
                         v_scroll.update(cx, |this, cx| {
                             this.scroll = (this.scroll - dy).clamp(0.0, max_scroll);
+                            this.refresh_preview(cx);
                             cx.notify();
                         });
                     });
@@ -382,24 +562,8 @@ impl UiApp {
             }
         }
 
-        let preview_el = if expanded
-            && let Some(sel) = selected
-            && let Some(&real) = visible.get(sel)
-        {
-            Some(preview::render(&self.items[real]).into_any_element())
-        } else {
-            None
-        };
-
-        div()
-            .id("root")
-            .size_full()
-            .flex()
-            .items_start()
-            .gap(px(PREVIEW_GAP))
-            .child(card)
-            .children(preview_el)
-            .into_any_element()
+        // 预览是独立窗口，主窗口的尺寸/位置/内容都不再为它让路。
+        div().id("root").size_full().child(card).into_any_element()
     }
 }
 

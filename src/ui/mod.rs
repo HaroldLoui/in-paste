@@ -3,6 +3,7 @@
 pub mod app;
 pub mod icons;
 pub mod preview;
+pub mod preview_window;
 pub mod row;
 pub mod settings;
 pub mod toolbar;

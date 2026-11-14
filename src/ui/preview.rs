@@ -7,7 +7,7 @@ use crate::core::{Item, Kind};
 use crate::theme::*;
 use crate::ui::icons;
 
-pub fn render(item: &Item) -> impl IntoElement {
+pub fn render(item: Item) -> impl IntoElement {
     let kind = item.kind;
 
     div()
@@ -18,6 +18,7 @@ pub fn render(item: &Item) -> impl IntoElement {
         .flex_col()
         .rounded(px(PREVIEW_R))
         .bg(c(PREVIEW_BG))
+        .shadow_md()
         .px(px(28.))
         .pt(px(26.))
         .gap(px(16.))

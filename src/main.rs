@@ -64,7 +64,7 @@ fn main() {
             ..Default::default()
         };
 
-        open_window(opts, cx, |window, cx| {
+        let (main_window, main_view) = open_window(opts, cx, |window, cx| {
             window.set_window_title("in-paste");
             // 样式与缩放接管在首帧前完成；NCCALCSIZE 改成客户区=窗口后要同步一次 viewport。
             if win::harden(window).is_some() {
@@ -77,6 +77,18 @@ fn main() {
             view
         })
         .expect("failed to open window");
+
+        // 预览窗口在主窗建立后预创建；隐藏，选中行时再 cloak 显示。
+        main_view.update(cx, |this, cx| this.precreate_preview(cx));
+
+        // 主窗是应用生命周期；它被系统关掉时把所有窗口（包括预览窗）一起退出。
+        let main_id = main_window.window_id();
+        cx.on_window_closed(move |cx, closed_id| {
+            if closed_id == main_id {
+                cx.quit();
+            }
+        })
+        .detach();
 
         eprintln!("[in-paste] gpui rewrite started");
     });

@@ -32,7 +32,7 @@ impl Kind {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Item {
     pub kind: Kind,
     pub title: &'static str,
